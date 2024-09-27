@@ -87,13 +87,14 @@ namespace QuantLib {
                       refPeriodStart,
                       refPeriodEnd,
                       exCouponDate),
-      fxIndex_(std::move(fxIndex)), lowerTrigger_(lowerTrigger), upperTrigger_(upperTrigger),
+      fxIndex_(std::move(fxIndex)),
         observationsSchedule_(ext::make_shared<Schedule>(MakeSchedule()
                                     .from(accrualStartDate)
                                     .to(accrualEndDate)
                                     .withFrequency(Daily)
                                     .withCalendar(fxIndex->fixingCalendar())
-                                    .withConvention(Following))), rangeAccrual_(0.0) {  } 
+                                                           .withConvention(Following))),
+      lowerTrigger_(lowerTrigger), upperTrigger_(upperTrigger), rangeAccrual_(0.0) {}
 
 
     void FxRangeAccrualFixedCoupon::performCalculations() const {
