@@ -231,7 +231,7 @@ BOOST_AUTO_TEST_CASE(testCouponPricing)  {
     cps.push_back(make_coupon(1.20, 1.22));
     cps.push_back(make_coupon(1.15, 1.175));  // RA 8/23 = 0.347826087
 
-    for (auto cp : cps) {
+    for (FxRangeAccrualFixedCoupon& cp : cps) { // make sure we get a reference and not a copy
         cp.setPricer(pricer);
     }
 
