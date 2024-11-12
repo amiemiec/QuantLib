@@ -2,8 +2,7 @@
 
 /*
 
- Copyright (C) 2006, 2007 Giorgio Facchinetti
- Copyright (C) 2006, 2007 Mario Pucci
+ Copyright (C) 2024 Sebastian Schlenkrich, Andre Miemiec
 
  This file is part of QuantLib, a free-software/open-source library
  for financial quantitative analysts and developers - http://quantlib.org/
@@ -26,39 +25,20 @@
 #ifndef quantlib_cms_range_accrual_fixed_h
 #define quantlib_cms_range_accrual_fixed_h
 
-#include <ql/cashflows/couponpricer.hpp>
-#include <ql/cashflows/fixedratecoupon.hpp>
 #include <ql/time/schedule.hpp>
-#include <vector>
+#include <ql/cashflows/fixedratecoupon.hpp>
 
 namespace QuantLib {
 
     class SwapIndex;
     class SwaptionVolatilityStructure;
-    class CmsCouponPricer;
     class HaganPricer;
+    class CmsCouponPricer;
     class CmsRangeAccrualFixedCouponPricer;
 
     class CmsRangeAccrualFixedCoupon: public FixedRateCoupon {
 
       public:
-        CmsRangeAccrualFixedCoupon(
-		    // FixedRateCoupon
-		    const Date& paymentDate,
-            Real nominal,
-            Real rate,
-            const DayCounter& dayCounter,
-            const Date& accrualStartDate,
-            const Date& accrualEndDate,
-			// RA feature
-            ext::shared_ptr<Schedule> observationsSchedule,
-			ext::shared_ptr<SwapIndex> cmsIndex,
-            Real lowerTrigger,
-            Real upperTrigger,
-			// optional FixedRateCoupon
-            const Date& refPeriodStart = Date(),
-            const Date& refPeriodEnd = Date(),
-            const Date& exCouponDate = Date());
 
         CmsRangeAccrualFixedCoupon(
             // FixedRateCoupon
@@ -73,6 +53,7 @@ namespace QuantLib {
             ext::shared_ptr<SwapIndex> cmsIndex,
             Real lowerTrigger,
             Real upperTrigger,
+            Natural lockout,
             // optional FixedRateCoupon
             const Date& refPeriodStart = Date(),
             const Date& refPeriodEnd = Date(),
@@ -90,9 +71,10 @@ namespace QuantLib {
 
 
         ext::shared_ptr<Schedule> observationsSchedule() const { return observationsSchedule_; }
-        ext::shared_ptr<SwapIndex> cmsIndex() const { return cmsIndex_; }
+        ext::shared_ptr<SwapIndex> swapIndex() const { return swapIndex_; }
         Real lowerTrigger() const { return lowerTrigger_; }
         Real upperTrigger() const { return upperTrigger_; }
+        Natural lockout() const { return lockout_; }
         Real rangeAccrual() const;
 
         //! \name Visitability
@@ -106,11 +88,11 @@ namespace QuantLib {
 
       private:
 
-        const ext::shared_ptr<Schedule> observationsSchedule_;
-        ext::shared_ptr<SwapIndex> cmsIndex_;
-        std::vector<Date> observationDates_;
+        ext::shared_ptr<Schedule> observationsSchedule_;
+        ext::shared_ptr<SwapIndex> swapIndex_;
         Real lowerTrigger_;
         Real upperTrigger_;
+        Natural lockout_; 
 
         ext::shared_ptr<CmsRangeAccrualFixedCouponPricer> pricer_;
         mutable Real rangeAccrual_;
@@ -118,18 +100,10 @@ namespace QuantLib {
      };
 
 
-    class CmsRangeAccrualFixedCouponPricer
-    : public virtual Observer,
-      public virtual Observable {
+    class CmsRangeAccrualFixedCouponPricer: public virtual Observer, public virtual Observable {
       public:
 
-        CmsRangeAccrualFixedCouponPricer(
-            Handle<SwaptionVolatilityStructure> swaptionVolatility
-        );
-
-        CmsRangeAccrualFixedCouponPricer(
-            const ext::shared_ptr<CmsCouponPricer> cmsCouponPricer
-        );
+        CmsRangeAccrualFixedCouponPricer(const ext::shared_ptr<CmsCouponPricer> cmsCouponPricer);
 
         void initialize(const CmsRangeAccrualFixedCoupon& coupon);
 
@@ -143,17 +117,17 @@ namespace QuantLib {
       //@}
 
       protected:
+        ext::shared_ptr<HaganPricer> pricer_;
         Handle<SwaptionVolatilityStructure> swaptionVolatility_;
-        ext::shared_ptr<HaganPricer> haganPricer_;
         Real rangeAccrual_;
         mutable std::map<std::string, Real> additionalResults_;
 
       private:
-        Real cmsPutOption(const ext::shared_ptr<SwapIndex>& cmsIndex,
-                          const Date& exerciseDate,
-                          const Date& paymentDate,
-                          const Real optionStrike,
-                          const Real spreadWidth = 1.0e-4  // 1bp, be carefull with numerical instabilities
+        Real ProbFromPutSpread(const ext::shared_ptr<SwapIndex>& swapIndex,
+                               const Date& exerciseDate,
+                               const Date& paymentDate,
+                               const Real optionStrike,
+                               const Real spreadWidth = 1.0e-4  // 1bp, be carefull with numerical instabilities
         );
 
     };
