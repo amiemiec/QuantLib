@@ -50,7 +50,7 @@ namespace QuantLib {
             const Date& accrualEndDate,
             // RA feature
             // calculate observation schedule from coupon
-            ext::shared_ptr<SwapIndex> cmsIndex,
+            ext::shared_ptr<SwapIndex> index,
             Real lowerTrigger,
             Real upperTrigger,
             Natural lockout,
@@ -71,7 +71,7 @@ namespace QuantLib {
 
 
         ext::shared_ptr<Schedule> observationsSchedule() const { return observationsSchedule_; }
-        ext::shared_ptr<SwapIndex> swapIndex() const { return swapIndex_; }
+        ext::shared_ptr<SwapIndex> index() const { return index_; }
         Real lowerTrigger() const { return lowerTrigger_; }
         Real upperTrigger() const { return upperTrigger_; }
         Natural lockout() const { return lockout_; }
@@ -89,7 +89,7 @@ namespace QuantLib {
       private:
 
         ext::shared_ptr<Schedule> observationsSchedule_;
-        ext::shared_ptr<SwapIndex> swapIndex_;
+        ext::shared_ptr<SwapIndex> index_;
         Real lowerTrigger_;
         Real upperTrigger_;
         Natural lockout_; 
@@ -103,7 +103,7 @@ namespace QuantLib {
     class CmsRangeAccrualFixedCouponPricer: public virtual Observer, public virtual Observable {
       public:
 
-        CmsRangeAccrualFixedCouponPricer(const ext::shared_ptr<CmsCouponPricer> cmsCouponPricer);
+        CmsRangeAccrualFixedCouponPricer(const ext::shared_ptr<CmsCouponPricer> pricer);
 
         void initialize(const CmsRangeAccrualFixedCoupon& coupon);
 
@@ -118,12 +118,12 @@ namespace QuantLib {
 
       protected:
         ext::shared_ptr<HaganPricer> pricer_;
-        Handle<SwaptionVolatilityStructure> swaptionVolatility_;
+        Handle<SwaptionVolatilityStructure> volatility_;
         Real rangeAccrual_;
         mutable std::map<std::string, Real> additionalResults_;
 
       private:
-        Real ProbFromPutSpread(const ext::shared_ptr<SwapIndex>& swapIndex,
+        Real ProbFromPutSpread(const ext::shared_ptr<SwapIndex>& index,
                                const Date& exerciseDate,
                                const Date& paymentDate,
                                const Real optionStrike,

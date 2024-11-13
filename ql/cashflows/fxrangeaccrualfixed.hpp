@@ -26,10 +26,8 @@
 #ifndef quantlib_fx_range_accrual_fixed_h
 #define quantlib_fx_range_accrual_fixed_h
 
-#include <ql/cashflows/couponpricer.hpp>
+
 #include <ql/cashflows/fixedratecoupon.hpp>
-#include <ql/time/schedule.hpp>
-#include <vector>
 
 namespace QuantLib {
 
@@ -40,23 +38,6 @@ namespace QuantLib {
     class FxRangeAccrualFixedCoupon: public FixedRateCoupon {
 
       public:
-        FxRangeAccrualFixedCoupon(
-		    // FixedRateCoupon
-		    const Date& paymentDate,
-            Real nominal,
-            Real rate,
-            const DayCounter& dayCounter,
-            const Date& accrualStartDate,
-            const Date& accrualEndDate,
-			// RA feature
-            ext::shared_ptr<Schedule> observationsSchedule,
-			ext::shared_ptr<FxIndex> fxIndex,
-            Real lowerTrigger,
-            Real upperTrigger,
-			// optional FixedRateCoupon
-            const Date& refPeriodStart = Date(),
-            const Date& refPeriodEnd = Date(),
-            const Date& exCouponDate = Date());
 
         FxRangeAccrualFixedCoupon(
             // FixedRateCoupon
@@ -68,7 +49,7 @@ namespace QuantLib {
             const Date& accrualEndDate,
             // RA feature
             // calculate observation schedule from coupon
-            ext::shared_ptr<FxIndex> fxIndex,
+            ext::shared_ptr<FxIndex> index,
             Real lowerTrigger,
             Real upperTrigger,
             // optional FixedRateCoupon
@@ -88,7 +69,7 @@ namespace QuantLib {
 
 
         ext::shared_ptr<Schedule> observationsSchedule() const { return observationsSchedule_; }
-        ext::shared_ptr<FxIndex> fxIndex() const { return fxIndex_; }
+        ext::shared_ptr<FxIndex> index() const { return index_; }
         Real lowerTrigger() const { return lowerTrigger_; }
         Real upperTrigger() const { return upperTrigger_; }
         Real rangeAccrual() const;
@@ -104,9 +85,8 @@ namespace QuantLib {
 
       private:
 
-        const ext::shared_ptr<Schedule> observationsSchedule_;
-        ext::shared_ptr<FxIndex> fxIndex_;
-        std::vector<Date> observationDates_;
+        ext::shared_ptr<Schedule> observationsSchedule_;
+        ext::shared_ptr<FxIndex> index_;
         Real lowerTrigger_;
         Real upperTrigger_;
 
@@ -122,7 +102,7 @@ namespace QuantLib {
       public:
 
         FxRangeAccrualFixedCouponPricer(
-            Handle<BlackVolTermStructure> fxVolatility
+            Handle<BlackVolTermStructure> volatility
         );
 
         void initialize(const FxRangeAccrualFixedCoupon& coupon);
@@ -137,9 +117,18 @@ namespace QuantLib {
       //@}
 
       protected:
-        Handle<BlackVolTermStructure> fxVolatility_;
+        Handle<BlackVolTermStructure> volatility_;
         Real rangeAccrual_;
         mutable std::map<std::string, Real> additionalResults_;
+
+      private:
+        Real ProbFromDigital(
+            const ext::shared_ptr<FxIndex>& index,
+            const Date& exerciseDate,
+            const Date& paymentDate,
+            const Real optionStrike
+        );
+
     };
 
 }

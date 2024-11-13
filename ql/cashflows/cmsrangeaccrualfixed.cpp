@@ -46,7 +46,7 @@ namespace QuantLib {
         const Date& accrualEndDate,
         // RA feature
         // calculate observation schedule from coupon
-        ext::shared_ptr<SwapIndex> swapIndex,
+        ext::shared_ptr<SwapIndex> index,
         Real lowerTrigger,
         Real upperTrigger,
         Natural lockout,
@@ -63,13 +63,13 @@ namespace QuantLib {
                       refPeriodStart,
                       refPeriodEnd,
                       exCouponDate),
-      swapIndex_(swapIndex), lowerTrigger_(lowerTrigger), upperTrigger_(upperTrigger), lockout_(lockout), 
+      index_(index), lowerTrigger_(lowerTrigger), upperTrigger_(upperTrigger), lockout_(lockout), 
       observationsSchedule_(0), pricer_(0), rangeAccrual_(0.0) 
     {
-        QL_REQUIRE(swapIndex_, "swapIndex_ required.");
+        QL_REQUIRE(index_, "swapIndex_ required.");
         QL_REQUIRE(lowerTrigger_ < upperTrigger_, "lowerTrigger_ < upperTrigger_ required.");
 
-        Calendar cal = swapIndex->fixingCalendar();
+        Calendar cal = index->fixingCalendar();
 
         Date accrualStartDateMod = accrualStartDate;
         Date accrualEndDateMod = cal.advance(accrualEndDate, -lockout_ * Days);
@@ -95,7 +95,7 @@ namespace QuantLib {
             // calculate fall-back via intrinsic value
             Real inRange = 0.0;
             for (auto d : observationsSchedule()->dates()) {
-                auto indexObservation = swapIndex()->fixing(d);
+                auto indexObservation = index()->fixing(d);
                 if (indexObservation >= lowerTrigger() && indexObservation <= upperTrigger())
                     inRange += 1.0;
             }
@@ -136,56 +136,18 @@ namespace QuantLib {
     }
 
 
-    CmsRangeAccrualFixedCouponPricer::CmsRangeAccrualFixedCouponPricer(const ext::shared_ptr<CmsCouponPricer> cmsCouponPricer)
-    : swaptionVolatility_(cmsCouponPricer->swaptionVolatility()), pricer_(), rangeAccrual_(Null<Real>()) 
+    CmsRangeAccrualFixedCouponPricer::CmsRangeAccrualFixedCouponPricer(const ext::shared_ptr<CmsCouponPricer> pricer)
+    : volatility_(pricer->swaptionVolatility()), pricer_(0), rangeAccrual_(0.0) 
     {
         // We allow a CmsCouponPricer here to enable a general interface.
         // However, for our implementation, we require a HaganPricer.
         // Consequently, we need to down-cast the pricer.
-        QL_REQUIRE(cmsCouponPricer, "cmsCouponPricer is required.");
-        pricer_ = ext::dynamic_pointer_cast<HaganPricer>(cmsCouponPricer);
+        QL_REQUIRE(pricer, "cmsCouponPricer is required.");
+        pricer_ = ext::dynamic_pointer_cast<HaganPricer>(pricer);
         QL_REQUIRE(pricer_, "Cannot down-cast cmsCouponPricer to HaganPricer.");
     }
 
 
-    Real CmsRangeAccrualFixedCouponPricer::ProbFromPutSpread(
-        const ext::shared_ptr<SwapIndex>& swapIndex,
-        const Date& exerciseDate,
-        const Date& paymentDate,
-        const Real optionStrike,
-        const Real spreadWidth) 
-    {
-        QL_REQUIRE(pricer_, "pricer_ required.");
-        QL_REQUIRE(spreadWidth > 0.0, "spreadWidth > 0.0 required.");
-        //AMI:DEBUG: Was wird hier genau berechnet?
-        CmsCoupon cmsCoupon(
-            paymentDate,
-            1.0,               // nominal
-            exerciseDate,      // startDate
-            exerciseDate + 1,  // endDate
-            0,                 // fixingDays
-            swapIndex,
-            1.0,               // gearing
-            0.0,               // spread
-            Date(),            // refPeriodStart
-            Date(),            // refPeriodEnd
-            Actual360()
-        );
-        cmsCoupon.setPricer(pricer_);
-        cmsCoupon.performCalculations();
-        Real swapRate = swapIndex->fixing(exerciseDate);
-        Real putSprd = 0.0;
-        if (optionStrike > swapRate) {  // calculate call spread to improve numerical stability
-            Real calPlus = pricer_->capletRate(optionStrike + 0.5 * spreadWidth);
-            Real calMins = pricer_->capletRate(optionStrike - 0.5 * spreadWidth);
-            putSprd = 1.0 - (calMins - calPlus) / spreadWidth;
-        } else {
-            Real putPlus = pricer_->floorletRate(optionStrike + 0.5 * spreadWidth);
-            Real putMins = pricer_->floorletRate(optionStrike - 0.5 * spreadWidth);
-            putSprd = (putPlus - putMins) / spreadWidth;
-        }
-        return putSprd;
-    }
 
 
     void CmsRangeAccrualFixedCouponPricer::initialize(const CmsRangeAccrualFixedCoupon& coupon) {
@@ -194,11 +156,13 @@ namespace QuantLib {
         Real minStd = 0.000005;  // 1bp * sqrt(1d)
         Real strikeLow = coupon.lowerTrigger();
         Real strikeUpp = coupon.upperTrigger();
-        boost::shared_ptr<SwapIndex> index = coupon.swapIndex();
+        boost::shared_ptr<SwapIndex> index = coupon.index();
 
         CumulativeNormalDistribution Phi;
         
         Real daysInRange = 0.0;
+        Size observationDays = coupon.observationsSchedule()->dates().size();
+
         for (auto d : coupon.observationsSchedule()->dates()) 
         {
             Real indexObservation = index->fixing(d);
@@ -207,12 +171,14 @@ namespace QuantLib {
             //
             Real probLow = 0.0;
             Real probUpp = 0.0;
-            if (d > swaptionVolatility_->referenceDate()) {
-                standardDevLow = std::sqrt(std::max(swaptionVolatility_->blackVariance(d,index->tenor(), strikeLow, true), 0.0));
-                standardDevUpp = std::sqrt(std::max(swaptionVolatility_->blackVariance(d,index->tenor(), strikeUpp, true), 0.0));
+
+            if (d > volatility_->referenceDate()) {
+                standardDevLow = std::sqrt(std::max(volatility_->blackVariance(d,index->tenor(), strikeLow, true), 0.0));
+                standardDevUpp = std::sqrt(std::max(volatility_->blackVariance(d,index->tenor(), strikeUpp, true), 0.0));
             }
+           
             Real inRangeProbability = 0.0;
-            //
+            
             if (standardDevLow < minStd) { // calculate intrinsic value
                 probLow = (indexObservation < strikeLow) ? (1.0) : (0.0);
             } else {
@@ -223,7 +189,7 @@ namespace QuantLib {
                     probLow = Phi((strikeLow - indexObservation) / standardDevLow);
                 }
             }
-            //
+            
             if (standardDevUpp < minStd) { // calculate intrinsic value
                 probUpp = (indexObservation < strikeUpp) ? (1.0) : (0.0);
             } else {
@@ -236,7 +202,7 @@ namespace QuantLib {
             inRangeProbability = probUpp - probLow;
             daysInRange += inRangeProbability;
             
-            //debug infos 
+            //additional results 
             std::ostringstream s;
             s << io::iso_date(d);
             std::string date_s = s.str();
@@ -246,7 +212,6 @@ namespace QuantLib {
             additionalResults_["standardDevUpp_" + date_s] = standardDevUpp;
             additionalResults_["inRangeProbability_" + date_s] = inRangeProbability;
         }
-        Size observationDays = coupon.observationsSchedule()->dates().size();
         rangeAccrual_ = daysInRange / observationDays;
         additionalResults_["daysInRange"] = daysInRange;
         additionalResults_["observationDays"] = (Real) observationDays;
@@ -255,5 +220,42 @@ namespace QuantLib {
     Real CmsRangeAccrualFixedCouponPricer::rangeAccrual() const {
         return rangeAccrual_;
     }
+
+    Real CmsRangeAccrualFixedCouponPricer::ProbFromPutSpread(const ext::shared_ptr<SwapIndex>& index,
+                                                             const Date& exerciseDate,
+                                                             const Date& paymentDate,
+                                                             const Real optionStrike,
+                                                             const Real spreadWidth) 
+    {
+        QL_REQUIRE(pricer_, "pricer_ required.");
+        QL_REQUIRE(spreadWidth > 0.0, "spreadWidth > 0.0 required.");
+        // AMI:DEBUG: Was wird hier genau berechnet?
+        CmsCoupon cmsCoupon(paymentDate,
+                            1.0,              // nominal
+                            exerciseDate,     // startDate
+                            exerciseDate + 1, // endDate
+                            0,                // fixingDays
+                            index,
+                            1.0,    // gearing
+                            0.0,    // spread
+                            Date(), // refPeriodStart
+                            Date(), // refPeriodEnd
+                            Actual360());
+        cmsCoupon.setPricer(pricer_);
+        cmsCoupon.performCalculations();
+        Real swapRate = index->fixing(exerciseDate);
+        Real putSprd = 0.0;
+        if (optionStrike > swapRate) { // calculate call spread to improve numerical stability
+            Real calPlus = pricer_->capletRate(optionStrike + 0.5 * spreadWidth);
+            Real calMins = pricer_->capletRate(optionStrike - 0.5 * spreadWidth);
+            putSprd = 1.0 - (calMins - calPlus) / spreadWidth;
+        } else {
+            Real putPlus = pricer_->floorletRate(optionStrike + 0.5 * spreadWidth);
+            Real putMins = pricer_->floorletRate(optionStrike - 0.5 * spreadWidth);
+            putSprd = (putPlus - putMins) / spreadWidth;
+        }
+        return putSprd;
+    }
+
 
 }

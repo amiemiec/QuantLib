@@ -34,40 +34,6 @@
 
 namespace QuantLib {
 
-    FxRangeAccrualFixedCoupon::FxRangeAccrualFixedCoupon(
-        // FixedRateCoupon
-        const Date& paymentDate,
-        Real nominal,
-        Real rate,
-        const DayCounter& dayCounter,
-        const Date& accrualStartDate,
-        const Date& accrualEndDate,
-        // RA feature
-        ext::shared_ptr<Schedule> observationsSchedule,
-        ext::shared_ptr<FxIndex> fxIndex,
-        Real lowerTrigger,
-        Real upperTrigger,
-        // optional FixedRateCoupon
-        const Date& refPeriodStart,
-        const Date& refPeriodEnd,
-        const Date& exCouponDate)
-    : FixedRateCoupon(paymentDate,
-                      nominal,
-                      rate,
-                      dayCounter,
-                      accrualStartDate,
-                      accrualEndDate,
-                      refPeriodStart,
-                      refPeriodEnd,
-                      exCouponDate),
-      observationsSchedule_(std::move(observationsSchedule)), fxIndex_(std::move(fxIndex)),
-      lowerTrigger_(lowerTrigger), upperTrigger_(upperTrigger), pricer_(0), rangeAccrual_(0.0) {
-        QL_REQUIRE(observationsSchedule_, "observationsSchedule_ required.");
-        QL_REQUIRE(fxIndex_, "fxIndex_ required.");
-        QL_REQUIRE(lowerTrigger_ > 0.0, "lowerTrigger_ > 0.0 required.");
-        QL_REQUIRE(lowerTrigger_ < upperTrigger_, "lowerTrigger_ < upperTrigger_ required.");
-    }
-
 
     FxRangeAccrualFixedCoupon::FxRangeAccrualFixedCoupon(
         // FixedRateCoupon
@@ -79,7 +45,7 @@ namespace QuantLib {
         const Date& accrualEndDate,
         // RA feature
         // calculate observation schedule from coupon
-        ext::shared_ptr<FxIndex> fxIndex,
+        ext::shared_ptr<FxIndex> index,
         Real lowerTrigger,
         Real upperTrigger,
         // optional FixedRateCoupon
@@ -95,18 +61,26 @@ namespace QuantLib {
                       refPeriodStart,
                       refPeriodEnd,
                       exCouponDate),
-    observationsSchedule_(ext::make_shared<Schedule>(MakeSchedule()
-                                    .from(accrualStartDate)
-                                    .to(accrualEndDate)
-                                    .withFrequency(Daily)
-                                    .withCalendar(fxIndex->fixingCalendar())
-                                    .withConvention(Following))),
-    fxIndex_(std::move(fxIndex)),
-    lowerTrigger_(lowerTrigger), upperTrigger_(upperTrigger), pricer_(0), rangeAccrual_(0.0) {
-        QL_REQUIRE(observationsSchedule_, "observationsSchedule_ required.");
-        QL_REQUIRE(fxIndex_, "fxIndex_ required.");
+      index_(index), lowerTrigger_(lowerTrigger), upperTrigger_(upperTrigger),
+      observationsSchedule_(0), pricer_(0), rangeAccrual_(0.0) 
+    {
+        QL_REQUIRE(index_, "fxIndex_ required.");
         QL_REQUIRE(lowerTrigger_ > 0.0, "lowerTrigger_ > 0.0 required.");
         QL_REQUIRE(lowerTrigger_ < upperTrigger_, "lowerTrigger_ < upperTrigger_ required.");
+
+        Calendar cal = index_->fixingCalendar();
+
+        Date accrualStartDateMod = accrualStartDate;
+        Date accrualEndDateMod =   accrualEndDate;
+
+        observationsSchedule_ = ext::make_shared<Schedule>(MakeSchedule()
+                                                               .from(accrualStartDateMod)
+                                                               .to(accrualEndDateMod)
+                                                               .withFrequency(Daily)
+                                                               .withCalendar(cal)
+                                                               .withConvention(Following));
+
+        QL_REQUIRE(observationsSchedule_, "observationsSchedule_ required.");
     }
 
 
@@ -120,7 +94,7 @@ namespace QuantLib {
             // calculate fall-back via intrinsic value
             Real inRange = 0.0;
             for (auto d : observationsSchedule()->dates()) {
-                auto indexObservation = fxIndex()->fixing(d);
+                auto indexObservation = index()->fixing(d);
                 if (indexObservation >= lowerTrigger() && indexObservation <= upperTrigger())
                     inRange += 1.0;
             }
@@ -136,7 +110,7 @@ namespace QuantLib {
 
     Real FxRangeAccrualFixedCoupon::amount() const {
         calculate();
-        return rangeAccrual_ * FixedRateCoupon::amount();
+        return FixedRateCoupon::amount() * rangeAccrual_;
     }
 
 
@@ -158,8 +132,8 @@ namespace QuantLib {
     }
 
     FxRangeAccrualFixedCouponPricer::FxRangeAccrualFixedCouponPricer(
-            Handle<BlackVolTermStructure> fxVolatility
-    ) : fxVolatility_(fxVolatility), rangeAccrual_(Null<Real>()) {}
+            Handle<BlackVolTermStructure> volatility
+    ) : volatility_(volatility), rangeAccrual_(0.0) {}
 
     void FxRangeAccrualFixedCouponPricer::initialize(const FxRangeAccrualFixedCoupon& coupon) {
         additionalResults_.clear();
@@ -168,87 +142,77 @@ namespace QuantLib {
         Real relSkewShift = 0.0001;
         Real strikeLow = coupon.lowerTrigger();
         Real strikeUpp = coupon.upperTrigger();
+        
+        boost::shared_ptr<FxIndex> index = coupon.index();
+
         CumulativeNormalDistribution Phi;
+
         Real daysInRange = 0.0;
+        Size observationDays = coupon.observationsSchedule()->dates().size();
+        
         for (auto d : coupon.observationsSchedule()->dates()) {
+            // we declare the valiables here to have them available for additional results later
+            Real indexObservation = index->fixing(d);
+     
+            Real standardDevLow = 0.0;
+            Real standardDevUpp = 0.0;
+
+            Real probLow = 0.0;
+            Real probUpp = 0.0;
+            
+
+            if (d > volatility_->referenceDate()) {
+                standardDevLow = std::sqrt(std::max(volatility_->blackVariance(d, strikeLow, true), 0.0));
+                standardDevUpp = std::sqrt(std::max(volatility_->blackVariance(d, strikeUpp, true), 0.0));
+            }
+            Real inRangeProbability = 0.0;
+            
+            if (standardDevLow < minStd) { // calculate intrinsic value
+                probLow = (indexObservation < strikeLow) ? (1.0) : (0.0);
+            } else { // digital option 
+
+                probLow = ProbFromDigital(index, d, coupon.date(), strikeLow);
+
+            }
+            
+            if (standardDevUpp < minStd) { // calculate intrinsic value
+                probUpp = (indexObservation < strikeUpp) ? (1.0) : (0.0);
+            } else { // digital option
+
+                probUpp = ProbFromDigital(index, d, coupon.date(), strikeUpp);
+
+            }
+            inRangeProbability = probUpp - probLow;
+            daysInRange += inRangeProbability;
+            
+            //additional results
             std::ostringstream s;
             s << io::iso_date(d);
             std::string date_s = s.str();
-            // we declare the valiables here to have them available for additional results later
-            Real indexObservation = coupon.fxIndex()->fixing(d);
-            Real t = fxVolatility_->timeFromReference(d);
-            //
-            Real σLow0 = 0.0;
-            Real σLow1 = 0.0;
-            Real σUpp0 = 0.0;
-            Real σUpp1 = 0.0;
-            Real skewLow = 0.0;
-            Real skewUpp = 0.0;
-            Real standardDevLow = 0.0;
-            Real standardDevUpp = 0.0;
-            //
-            Real d1Low = 0.0;
-            Real d2Low = 0.0;
-            Real d1Upp = 0.0;
-            Real d2Upp = 0.0;
-            Real vegaLow = 0.0;
-            Real vegaUpp = 0.0;
-            Real putLow = 0.0;
-            Real putUpp = 0.0;
-            if (d > fxVolatility_->referenceDate()) {
-                // low-strike calculations
-                σLow0 = std::max(fxVolatility_->blackVol(d, strikeLow, true), 0.0);
-                σLow1 = std::max(fxVolatility_->blackVol(d, (1.0 - relSkewShift) * strikeLow, true), 0.0);
-                skewLow = (σLow0 - σLow1) / (relSkewShift * strikeLow);
-                standardDevLow = σLow0 * std::sqrt(t);
-                // upp-strike calculations
-                σUpp0 = std::max(fxVolatility_->blackVol(d, strikeUpp, true), 0.0);
-                σUpp1 = std::max(fxVolatility_->blackVol(d, (1.0 + relSkewShift) * strikeUpp, true), 0.0);
-                skewUpp = (σUpp1 - σUpp0) / (relSkewShift * strikeUpp);
-                standardDevUpp = σUpp0 * std::sqrt(t);
-            }
-            Real inRangeProbability = 0.0;
-            //
-            if (standardDevLow < minStd) { // calculate intrinsic value
-                putLow = (indexObservation < strikeLow) ? (1.0) : (0.0);
-            } else { // Black digital put with smile
-                d1Low = std::log(indexObservation / strikeLow) / standardDevLow + 0.5 * standardDevLow;
-                d2Low = d1Low - standardDevLow;
-                putLow = Phi(-d2Low);
-                // smile ajustment
-                vegaLow = indexObservation * Phi.derivative(d1Low) * std::sqrt(t);
-                putLow += vegaLow * skewLow;
-            }
-            //
-            if (standardDevUpp < minStd) { // calculate intrinsic value
-                putUpp = (indexObservation < strikeUpp) ? (1.0) : (0.0);
-            } else { // Black digital put with smile
-                d1Upp = std::log(indexObservation / strikeUpp) / standardDevUpp + 0.5 * standardDevUpp;
-                d2Upp = d1Upp - standardDevUpp;
-                putUpp = Phi(-d2Upp);
-                // smile ajustment
-                vegaUpp = indexObservation * Phi.derivative(d1Upp) * std::sqrt(t);
-                putUpp += vegaUpp * skewUpp;
-            }
-            inRangeProbability = putUpp - putLow;
-            daysInRange += inRangeProbability;
-            //
+
             additionalResults_["indexObservation_" + date_s] = indexObservation;
             additionalResults_["standardDevLow_" + date_s] = standardDevLow;
             additionalResults_["standardDevUpp_" + date_s] = standardDevUpp;
-            additionalResults_["vegaLow_" + date_s] = vegaLow;
-            additionalResults_["vegaUpp_" + date_s] = vegaUpp;
-            additionalResults_["skewLow_" + date_s] = skewLow;
-            additionalResults_["skewUpp" + date_s] = skewUpp;
             additionalResults_["inRangeProbability_" + date_s] = inRangeProbability;
         }
-        rangeAccrual_ = daysInRange / coupon.observationsSchedule()->dates().size();
+
+        rangeAccrual_ = daysInRange / observationDays;
         additionalResults_["daysInRange"] = daysInRange;
-        additionalResults_["observationDays"] = (Real) coupon.observationsSchedule()->dates().size();
+        additionalResults_["observationDays"] = (double) observationDays;
     }
 
     Real FxRangeAccrualFixedCouponPricer::rangeAccrual() const {
         return rangeAccrual_;
     }
+
+    Real FxRangeAccrualFixedCouponPricer::ProbFromDigital(const ext::shared_ptr<FxIndex>& fxIndex,
+                                                          const Date& exerciseDate,
+                                                          const Date& paymentDate,
+                                                          const Real optionStrike)
+    {
+        return 0.0;
+    }
+
+
 
 }
