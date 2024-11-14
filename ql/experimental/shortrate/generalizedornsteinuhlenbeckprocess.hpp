@@ -3,6 +3,7 @@
 /*
  Copyright (C) 2010 SunTrust Bank
  Copyright (C) 2010 Cavit Hafizoglu
+ Copyright (C) 2010 Andre Miemiec
 
  This file is part of QuantLib, a free-software/open-source library
  for financial quantitative analysts and developers - http://quantlib.org/
@@ -26,7 +27,10 @@
 #define quantlib_generalized_ornstein_uhlenbeck_process_hpp
 
 #include <ql/stochasticprocess.hpp>
-#include <ql/functional.hpp>
+#include <boost/function.hpp>
+
+#include <ql/termstructures/yieldtermstructure.hpp>
+
 
 namespace QuantLib {
 
@@ -38,34 +42,35 @@ namespace QuantLib {
 
         \ingroup processes
 
-        where the coefficients a and sigma are piecewise linear.
+		where the coefficients a and sigma are piecewise linear.
     */
     class GeneralizedOrnsteinUhlenbeckProcess : public StochasticProcess1D {
       public:
-        GeneralizedOrnsteinUhlenbeckProcess(ext::function<Real(Time)> speed,
-                                            ext::function<Real(Time)> vol,
-                                            Real x0 = 0.0,
-                                            Real level = 0.0);
+        GeneralizedOrnsteinUhlenbeckProcess(
+              const Handle<YieldTermStructure>& speedTS,
+              const Handle<YieldTermStructure>& volTS,
+			  Real x0 = 0.0,
+			  Real level = 0.0);
         //! \name StochasticProcess1D interface
         //@{
-        Real x0() const override;
+        Real x0() const;
 
-        Real drift(Time t, Real x) const override;
-        Real diffusion(Time t, Real x) const override;
+        Real drift(Time t, Real x) const;
+        Real diffusion(Time t, Real x) const;
 
-        Real expectation(Time t0, Real x0, Time dt) const override;
-        Real stdDeviation(Time t0, Real x0, Time dt) const override;
-        Real variance(Time t0, Real x0, Time dt) const override;
+        Real expectation(Time t0, Real x0, Time dt) const;
+        Real stdDeviation(Time t0, Real x0, Time dt) const;
+        Real variance(Time t0, Real x0, Time dt) const;
         //@}
 
-        Real speed(Time t) const;
-        Real volatility(Time t) const;
+        Handle<YieldTermStructure> speed() const;
+        Handle<YieldTermStructure> volatility() const;
         Real level() const;
 
       private:
         Real x0_, level_;
-        ext::function<Real (Time)> speed_;
-        ext::function<Real (Time)> volatility_;
+        const Handle<YieldTermStructure> speed_;
+        const Handle<YieldTermStructure> volatility_;
     };
 
 }
