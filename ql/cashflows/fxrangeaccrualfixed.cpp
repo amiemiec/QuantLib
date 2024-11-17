@@ -210,7 +210,38 @@ namespace QuantLib {
                                                           const Date& paymentDate,
                                                           const Real optionStrike)
     {
-        return 0.0;
+        Date referenceDate = Settings::instance().evaluationDate();
+        Date spotDate = fxIndex->fixingCalendar().advance(referenceDate, 2 * Days);
+
+        Real spot = fxIndex->fixing(referenceDate);
+        Real forward  = fxIndex->fixing(exerciseDate);
+        Real variance = volatility_->blackVariance(exerciseDate,optionStrike);
+        Real deflator = fxIndex->domesticInterestRateCurve()->discount(exerciseDate) /
+                        fxIndex->domesticInterestRateCurve()->discount(spotDate);
+        Real spread   = 0.0001;
+
+        // Put Digital Option
+        Real vanilla =  blackFormula(Option::Put, optionStrike, forward, std::sqrt(variance), deflator);
+
+        Real delta  = blackFormula(Option::Put, optionStrike, forward + spread, std::sqrt(variance), deflator);
+        delta -= vanilla;
+        delta /= spread;
+        delta *= Option::Put;
+       
+        Real digi_put = (Option::Put)*(spot * delta - vanilla) / optionStrike;
+
+        //Call Digital Option
+        vanilla = blackFormula(Option::Call, optionStrike, forward, std::sqrt(variance), deflator);
+
+        delta = blackFormula(Option::Call, optionStrike, forward + spread, std::sqrt(variance), deflator);
+        delta -= vanilla;
+        delta /= spread;
+        delta *= Option::Call;
+
+        Real digi_call = (Option::Call) * (spot * delta - vanilla) / optionStrike;
+
+
+        return digi_put/(digi_put+digi_call);
     }
 
 
