@@ -213,7 +213,18 @@ QuantLib::ext::shared_ptr<FxSmileSection> BlackVolatilitySurfaceDelta::blackVolS
 }
 
 Real BlackVolatilitySurfaceDelta::forward(Time t) const {
-    return spot_->value() * foreignTS_->discount(t) / domesticTS_->discount(t); // TODO
+
+    Date today = referenceDate();
+    Date spotDate = calendar().advance(today, 2 * Days);
+ 
+    Real forward = spot_->value();
+
+    forward *= foreignTS_->discount(t);
+    forward /= foreignTS_->discount(timeFromReference(spotDate));
+    forward /= domesticTS_->discount(t); 
+    forward *= domesticTS_->discount(timeFromReference(spotDate)); 
+
+    return forward; 
 }
 
 Volatility BlackVolatilitySurfaceDelta::blackVolImpl(Time t, Real strike) const {
@@ -229,7 +240,11 @@ Volatility BlackVolatilitySurfaceDelta::blackVolImpl(Time t, Real strike) const 
             strike = forward(tme);
         }
     }
-    return blackVolSmile(tme)->volatility(strike);
+
+    //AMI++
+    Real displacement = t <= times_.back() ? 0.0 : forward(t) - forward(tme);
+    //++AMI
+    return blackVolSmile(tme)->volatility(strike - displacement );
 }
 
 } 

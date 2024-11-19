@@ -52,6 +52,7 @@ namespace QuantLib {
             ext::shared_ptr<FxIndex> index,
             Real lowerTrigger,
             Real upperTrigger,
+            Natural lockout,
             // optional FixedRateCoupon
             const Date& refPeriodStart = Date(),
             const Date& refPeriodEnd = Date(),
@@ -89,6 +90,7 @@ namespace QuantLib {
         ext::shared_ptr<FxIndex> index_;
         Real lowerTrigger_;
         Real upperTrigger_;
+        Natural lockout_;
 
         ext::shared_ptr<FxRangeAccrualFixedCouponPricer> pricer_;
         mutable Real rangeAccrual_;

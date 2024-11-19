@@ -64,6 +64,8 @@ namespace QuantLib {
             return equityDividendCurve();
         }
 
+      private:
+        Real forecastFixing(const Date& fixingDate) const;
     };
 
 }

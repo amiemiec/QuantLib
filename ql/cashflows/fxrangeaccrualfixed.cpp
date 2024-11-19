@@ -28,6 +28,7 @@
 #include <ql/pricingengines/blackformula.hpp>
 #include <ql/termstructures/yieldtermstructure.hpp>
 #include <ql/termstructures/volatility/equityfx/blackvoltermstructure.hpp>
+#include <ql/termstructures/volatility/fx/blackvolsurfacedelta.hpp>
 #include <ql/time/schedule.hpp>
 #include <cmath>
 #include <utility>
@@ -48,6 +49,7 @@ namespace QuantLib {
         ext::shared_ptr<FxIndex> index,
         Real lowerTrigger,
         Real upperTrigger,
+        Natural lockout,
         // optional FixedRateCoupon
         const Date& refPeriodStart,
         const Date& refPeriodEnd,
@@ -62,7 +64,7 @@ namespace QuantLib {
                       refPeriodEnd,
                       exCouponDate),
       index_(index), lowerTrigger_(lowerTrigger), upperTrigger_(upperTrigger),
-      observationsSchedule_(0), pricer_(0), rangeAccrual_(0.0) 
+      observationsSchedule_(0), pricer_(0), rangeAccrual_(0.0), lockout_(lockout) 
     {
         QL_REQUIRE(index_, "fxIndex_ required.");
         QL_REQUIRE(lowerTrigger_ > 0.0, "lowerTrigger_ > 0.0 required.");
@@ -70,8 +72,8 @@ namespace QuantLib {
 
         Calendar cal = index_->fixingCalendar();
 
-        Date accrualStartDateMod = accrualStartDate;
-        Date accrualEndDateMod =   accrualEndDate;
+        Date accrualStartDateMod = cal.advance(accrualStartDate,-lockout * Days);
+        Date accrualEndDateMod = cal.advance(accrualEndDate, -lockout_ * Days);
 
         observationsSchedule_ = ext::make_shared<Schedule>(MakeSchedule()
                                                                .from(accrualStartDateMod)
@@ -212,36 +214,36 @@ namespace QuantLib {
     {
         Date referenceDate = Settings::instance().evaluationDate();
         Date spotDate = fxIndex->fixingCalendar().advance(referenceDate, 2 * Days);
+        Date settlementDate = fxIndex->fixingCalendar().advance(exerciseDate, 2 * Days);
 
         Real spot = fxIndex->fixing(referenceDate);
-        Real forward  = fxIndex->fixing(exerciseDate);
-        Real variance = volatility_->blackVariance(exerciseDate,optionStrike);
-        Real deflator = fxIndex->domesticInterestRateCurve()->discount(exerciseDate) /
-                        fxIndex->domesticInterestRateCurve()->discount(spotDate);
-        Real spread   = 0.0001;
+        Real forward  = fxIndex->fixing(settlementDate);
 
-        // Put Digital Option
-        Real vanilla =  blackFormula(Option::Put, optionStrike, forward, std::sqrt(variance), deflator);
+        //Replication of Murex-Approach
+        
+        Real spread   = 0.001;
+        Real put_spread = 0.0;
+        Real cll_spread = 0.0;
 
-        Real delta  = blackFormula(Option::Put, optionStrike, forward + spread, std::sqrt(variance), deflator);
-        delta -= vanilla;
-        delta /= spread;
-        delta *= Option::Put;
-       
-        Real digi_put = (Option::Put)*(spot * delta - vanilla) / optionStrike;
+        Real variance   = volatility_->blackVariance(exerciseDate, optionStrike + spread);
+        put_spread += blackFormula(Option::Put,  optionStrike + spread, forward, std::sqrt(variance), 1.0)/(optionStrike + spread);
+        cll_spread -= blackFormula(Option::Call, optionStrike + spread, forward, std::sqrt(variance), 1.0)/(optionStrike + spread);
+        
+        variance = volatility_->blackVariance(exerciseDate, optionStrike);
+        put_spread -= blackFormula(Option::Put,  optionStrike, forward, std::sqrt(variance), 1.0)/optionStrike;
+        cll_spread += blackFormula(Option::Call, optionStrike, forward, std::sqrt(variance), 1.0)/optionStrike;
 
-        //Call Digital Option
-        vanilla = blackFormula(Option::Call, optionStrike, forward, std::sqrt(variance), deflator);
+        //++AMI: numerically redundant
+        put_spread /= spread;
+        put_spread /= spot;
 
-        delta = blackFormula(Option::Call, optionStrike, forward + spread, std::sqrt(variance), deflator);
-        delta -= vanilla;
-        delta /= spread;
-        delta *= Option::Call;
+        cll_spread /= spread;
+        cll_spread /= spot;
+        //AMI++
 
-        Real digi_call = (Option::Call) * (spot * delta - vanilla) / optionStrike;
+        Real prob = put_spread / (put_spread + cll_spread);
 
-
-        return digi_put/(digi_put+digi_call);
+        return prob;
     }
 
 

@@ -31,4 +31,25 @@ namespace QuantLib {
         Handle<Quote> spot
 	) : EquityIndex(std::move(name), std::move(fixingCalendar), std::move(domInterest), std::move(forInterest), std::move(spot)) {} 
 
+
+     Real FxIndex::forecastFixing(const Date& fixingDate) const {
+        QL_REQUIRE(!domesticInterestRateCurve().empty(),
+                   "null interest rate term structure set to this instance of " << name());
+
+        Date today = Settings::instance().evaluationDate();
+        Date lastFixingDate = fixingCalendar().adjust(today, BusinessDayConvention::Preceding);
+        Date spotDate = fixingCalendar().advance(today, 2 * Days);
+
+        Real fxspot = (*this).spot()->value();
+
+        Real forward = fxspot;
+        forward *= foreignInterestRateCurve()->discount(fixingDate) /
+                       foreignInterestRateCurve()->discount(spotDate);
+        forward /= domesticInterestRateCurve()->discount(fixingDate) /
+                   domesticInterestRateCurve()->discount(spotDate);
+
+        return forward;
+    }
+
+
 }
