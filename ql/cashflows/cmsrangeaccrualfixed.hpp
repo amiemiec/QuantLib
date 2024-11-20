@@ -132,6 +132,45 @@ namespace QuantLib {
 
     };
 
+
+
+
+       //! helper class building a sequence of range-accrual floating-rate coupons
+    class CmsRangeAccrualLeg {
+      public:
+        CmsRangeAccrualLeg(Schedule schedule, ext::shared_ptr<SwapIndex> index,ext::shared_ptr<CmsRangeAccrualFixedCouponPricer> pricer);
+        CmsRangeAccrualLeg& withNotionals(Real notional);
+        CmsRangeAccrualLeg& withNotionals(const std::vector<Real>& notionals);
+        CmsRangeAccrualLeg& withPaymentDayCounter(const DayCounter&);
+        CmsRangeAccrualLeg& withPaymentAdjustment(BusinessDayConvention);
+        CmsRangeAccrualLeg& withFixingDays(Natural fixingDays);
+        CmsRangeAccrualLeg& withFixingDays(const std::vector<Natural>& fixingDays);
+        CmsRangeAccrualLeg& withFixedRates(Rate fixedRate);
+        CmsRangeAccrualLeg& withFixedRates(const std::vector<Rate>& fixedRates);
+        CmsRangeAccrualLeg& withLowerTriggers(Rate trigger);
+        CmsRangeAccrualLeg& withLowerTriggers(const std::vector<Rate>& triggers);
+        CmsRangeAccrualLeg& withUpperTriggers(Rate trigger);
+        CmsRangeAccrualLeg& withUpperTriggers(const std::vector<Rate>& triggers);
+        CmsRangeAccrualLeg& withObservationShifters(Natural lookback);
+        CmsRangeAccrualLeg& withObservationShifters(const std::vector<Natural>& lookbacks);
+        operator Leg() const;
+
+      private:
+        Schedule schedule_;
+        ext::shared_ptr<SwapIndex> index_;
+        std::vector<Real> notionals_;
+        DayCounter paymentDayCounter_;
+        BusinessDayConvention paymentAdjustment_;
+        std::vector<Natural> fixingDays_;
+        std::vector<Rate> fixedRates_;
+        std::vector<Rate> lowerTriggers_, upperTriggers_;
+        std::vector<Natural> lookbacks_;
+        ext::shared_ptr<CmsRangeAccrualFixedCouponPricer> pricer_;
+    };
+
+
+
+
 }
 
 

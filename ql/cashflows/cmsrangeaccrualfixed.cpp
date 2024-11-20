@@ -258,4 +258,135 @@ namespace QuantLib {
     }
 
 
+
+
+    CmsRangeAccrualLeg::CmsRangeAccrualLeg(Schedule schedule, ext::shared_ptr<SwapIndex> index, ext::shared_ptr<CmsRangeAccrualFixedCouponPricer> pricer)
+    : schedule_(std::move(schedule)), index_(std::move(index)), pricer_(std::move(pricer)) {}
+
+    CmsRangeAccrualLeg& CmsRangeAccrualLeg::withNotionals(Real notional) {
+        notionals_ = std::vector<Real>(1, notional);
+        return *this;
+    }
+
+    CmsRangeAccrualLeg& CmsRangeAccrualLeg::withNotionals(const std::vector<Real>& notionals) {
+        notionals_ = notionals;
+        return *this;
+    }
+
+    CmsRangeAccrualLeg& CmsRangeAccrualLeg::withPaymentDayCounter(const DayCounter& dayCounter) {
+        paymentDayCounter_ = dayCounter;
+        return *this;
+    }
+
+    CmsRangeAccrualLeg& CmsRangeAccrualLeg::withPaymentAdjustment(BusinessDayConvention convention) {
+        paymentAdjustment_ = convention;
+        return *this;
+    }
+
+    CmsRangeAccrualLeg& CmsRangeAccrualLeg::withFixingDays(Natural fixingDays) {
+        fixingDays_ = std::vector<Natural>(1, fixingDays);
+        return *this;
+    }
+
+    CmsRangeAccrualLeg& CmsRangeAccrualLeg::withFixingDays(const std::vector<Natural>& fixingDays) {
+        fixingDays_ = fixingDays;
+        return *this;
+    }
+
+    CmsRangeAccrualLeg& CmsRangeAccrualLeg::withFixedRates(Rate fixedRate) {
+        fixedRates_ = std::vector<Rate>(1, fixedRate);
+        return *this;
+    }
+
+    CmsRangeAccrualLeg& CmsRangeAccrualLeg::withFixedRates(const std::vector<Rate>& fixedRates) {
+        fixedRates_ = fixedRates;
+        return *this;
+    }
+
+    CmsRangeAccrualLeg& CmsRangeAccrualLeg::withLowerTriggers(Rate trigger) {
+        lowerTriggers_ = std::vector<Rate>(1, trigger);
+        return *this;
+    }
+
+    CmsRangeAccrualLeg& CmsRangeAccrualLeg::withLowerTriggers(const std::vector<Rate>& triggers) {
+        lowerTriggers_ = triggers;
+        return *this;
+    }
+
+    CmsRangeAccrualLeg& CmsRangeAccrualLeg::withUpperTriggers(Rate trigger) {
+        upperTriggers_ = std::vector<Rate>(1, trigger);
+        return *this;
+    }
+
+    CmsRangeAccrualLeg& CmsRangeAccrualLeg::withUpperTriggers(const std::vector<Rate>& triggers) {
+        upperTriggers_ = triggers;
+        return *this;
+    }
+
+
+    CmsRangeAccrualLeg& CmsRangeAccrualLeg::withObservationShifters(Natural lookback) {
+        lookbacks_ = std::vector<Natural>(1, lookback);
+        return *this;
+    }
+
+
+    CmsRangeAccrualLeg& CmsRangeAccrualLeg::withObservationShifters(const std::vector<Natural>& lookbacks) {
+        lookbacks_ = lookbacks;
+        return *this;
+    }
+
+
+
+    CmsRangeAccrualLeg::operator Leg() const {
+
+        QL_REQUIRE(!notionals_.empty(), "no notional given");
+
+        Size n = schedule_.size() - 1;
+        QL_REQUIRE(notionals_.size() <= n,
+                   "too many nominals (" << notionals_.size() << "), only " << n << " required");
+        QL_REQUIRE(fixingDays_.size() <= n,
+                   "too many fixingDays (" << fixingDays_.size() << "), only " << n << " required");
+        QL_REQUIRE(lowerTriggers_.size() <= n, "too many lowerTriggers (" << lowerTriggers_.size()
+                                                                          << "), only " << n
+                                                                          << " required");
+        QL_REQUIRE(upperTriggers_.size() <= n, "too many upperTriggers (" << upperTriggers_.size()
+                                                                          << "), only " << n
+                                                                          << " required");
+
+        Leg leg;
+        leg.empty();
+
+        // the following is not always correct
+        Calendar calendar = schedule_.calendar();
+
+        Date refStart, start, refEnd, end;
+        Date paymentDate;
+
+        for (Size i = 0; i < n; ++i) {
+            refStart = start = schedule_.date(i);
+            refEnd = end = schedule_.date(i + 1);
+            paymentDate = calendar.adjust(end, paymentAdjustment_);
+            if (i == 0 && schedule_.hasIsRegular() && !schedule_.isRegular(i + 1)) {
+                BusinessDayConvention bdc = schedule_.businessDayConvention();
+                refStart = calendar.adjust(end - schedule_.tenor(), bdc);
+            }
+            if (i == n - 1 && schedule_.hasIsRegular() && !schedule_.isRegular(i + 1)) {
+                BusinessDayConvention bdc = schedule_.businessDayConvention();
+                refEnd = calendar.adjust(start + schedule_.tenor(), bdc);
+            }
+            ext::shared_ptr<CmsRangeAccrualFixedCoupon> cpn = 
+                ext::shared_ptr<CmsRangeAccrualFixedCoupon>(
+                    new CmsRangeAccrualFixedCoupon(
+                    paymentDate, detail::get(notionals_, i, Null<Real>()),
+                    detail::get(fixedRates_, i, 0.0), paymentDayCounter_, start, end, index_,
+                    detail::get(lowerTriggers_, i, 0.0), detail::get(upperTriggers_, i, 0.0),
+                    detail::get(lookbacks_, i, 0), refStart, refEnd));
+            cpn->setPricer(pricer_);
+            leg.push_back(ext::dynamic_pointer_cast<CashFlow>(cpn));
+        }
+        return leg;
+    }
+
+
+
 }
