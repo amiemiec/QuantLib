@@ -1,8 +1,7 @@
 ﻿/* -*- mode: c++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
 
 /*
- Copyright (C) 2006, 2007 Giorgio Facchinetti
- Copyright (C) 2006, 2007 Mario Pucci
+ Copyright (C) 2024 Sebastian Schlenkrich, Andre Miemiec
 
  This file is part of QuantLib, a free-software/open-source library
  for financial quantitative analysts and developers - http://quantlib.org/
@@ -246,6 +245,135 @@ namespace QuantLib {
         return prob;
     }
 
+
+    FxRangeAccrualLeg::FxRangeAccrualLeg(Schedule schedule,
+                                           ext::shared_ptr<FxIndex> index,
+                                           ext::shared_ptr<FxRangeAccrualFixedCouponPricer> pricer)
+    : schedule_(std::move(schedule)), index_(std::move(index)), pricer_(std::move(pricer)) {}
+
+    FxRangeAccrualLeg& FxRangeAccrualLeg::withNotionals(Real notional) {
+        notionals_ = std::vector<Real>(1, notional);
+        return *this;
+    }
+
+    FxRangeAccrualLeg& FxRangeAccrualLeg::withNotionals(const std::vector<Real>& notionals) {
+        notionals_ = notionals;
+        return *this;
+    }
+
+    FxRangeAccrualLeg& FxRangeAccrualLeg::withPaymentDayCounter(const DayCounter& dayCounter) {
+        paymentDayCounter_ = dayCounter;
+        return *this;
+    }
+
+    FxRangeAccrualLeg&
+    FxRangeAccrualLeg::withPaymentAdjustment(BusinessDayConvention convention) {
+        paymentAdjustment_ = convention;
+        return *this;
+    }
+
+    FxRangeAccrualLeg& FxRangeAccrualLeg::withFixingDays(Natural fixingDays) {
+        fixingDays_ = std::vector<Natural>(1, fixingDays);
+        return *this;
+    }
+
+    FxRangeAccrualLeg& FxRangeAccrualLeg::withFixingDays(const std::vector<Natural>& fixingDays) {
+        fixingDays_ = fixingDays;
+        return *this;
+    }
+
+    FxRangeAccrualLeg& FxRangeAccrualLeg::withFixedRates(Rate fixedRate) {
+        fixedRates_ = std::vector<Rate>(1, fixedRate);
+        return *this;
+    }
+
+    FxRangeAccrualLeg& FxRangeAccrualLeg::withFixedRates(const std::vector<Rate>& fixedRates) {
+        fixedRates_ = fixedRates;
+        return *this;
+    }
+
+    FxRangeAccrualLeg& FxRangeAccrualLeg::withLowerTriggers(Rate trigger) {
+        lowerTriggers_ = std::vector<Rate>(1, trigger);
+        return *this;
+    }
+
+    FxRangeAccrualLeg& FxRangeAccrualLeg::withLowerTriggers(const std::vector<Rate>& triggers) {
+        lowerTriggers_ = triggers;
+        return *this;
+    }
+
+    FxRangeAccrualLeg& FxRangeAccrualLeg::withUpperTriggers(Rate trigger) {
+        upperTriggers_ = std::vector<Rate>(1, trigger);
+        return *this;
+    }
+
+    FxRangeAccrualLeg& FxRangeAccrualLeg::withUpperTriggers(const std::vector<Rate>& triggers) {
+        upperTriggers_ = triggers;
+        return *this;
+    }
+
+
+    FxRangeAccrualLeg& FxRangeAccrualLeg::withObservationShifters(Natural lookback) {
+        lookbacks_ = std::vector<Natural>(1, lookback);
+        return *this;
+    }
+
+
+    FxRangeAccrualLeg&
+    FxRangeAccrualLeg::withObservationShifters(const std::vector<Natural>& lookbacks) {
+        lookbacks_ = lookbacks;
+        return *this;
+    }
+
+
+    FxRangeAccrualLeg::operator Leg() const {
+
+        QL_REQUIRE(!notionals_.empty(), "no notional given");
+
+        Size n = schedule_.size() - 1;
+        QL_REQUIRE(notionals_.size() <= n,
+                   "too many nominals (" << notionals_.size() << "), only " << n << " required");
+        QL_REQUIRE(fixingDays_.size() <= n,
+                   "too many fixingDays (" << fixingDays_.size() << "), only " << n << " required");
+        QL_REQUIRE(lowerTriggers_.size() <= n, "too many lowerTriggers (" << lowerTriggers_.size()
+                                                                          << "), only " << n
+                                                                          << " required");
+        QL_REQUIRE(upperTriggers_.size() <= n, "too many upperTriggers (" << upperTriggers_.size()
+                                                                          << "), only " << n
+                                                                          << " required");
+
+        Leg leg;
+        leg.empty();
+
+        // the following is not always correct
+        Calendar calendar = schedule_.calendar();
+
+        Date refStart, start, refEnd, end;
+        Date paymentDate;
+
+        for (Size i = 0; i < n; ++i) {
+            refStart = start = schedule_.date(i);
+            refEnd = end = schedule_.date(i + 1);
+            paymentDate = calendar.adjust(end, paymentAdjustment_);
+            if (i == 0 && schedule_.hasIsRegular() && !schedule_.isRegular(i + 1)) {
+                BusinessDayConvention bdc = schedule_.businessDayConvention();
+                refStart = calendar.adjust(end - schedule_.tenor(), bdc);
+            }
+            if (i == n - 1 && schedule_.hasIsRegular() && !schedule_.isRegular(i + 1)) {
+                BusinessDayConvention bdc = schedule_.businessDayConvention();
+                refEnd = calendar.adjust(start + schedule_.tenor(), bdc);
+            }
+            ext::shared_ptr<FxRangeAccrualFixedCoupon> cpn =
+                ext::shared_ptr<FxRangeAccrualFixedCoupon>(new FxRangeAccrualFixedCoupon(
+                    paymentDate, detail::get(notionals_, i, Null<Real>()),
+                    detail::get(fixedRates_, i, 0.0), paymentDayCounter_, start, end, index_,
+                    detail::get(lowerTriggers_, i, 0.0), detail::get(upperTriggers_, i, 0.0),
+                    detail::get(lookbacks_, i, 0), refStart, refEnd));
+            cpn->setPricer(pricer_);
+            leg.push_back(ext::dynamic_pointer_cast<CashFlow>(cpn));
+        }
+        return leg;
+    }
 
 
 }

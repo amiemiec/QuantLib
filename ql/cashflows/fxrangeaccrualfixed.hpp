@@ -2,8 +2,7 @@
 
 /*
 
- Copyright (C) 2006, 2007 Giorgio Facchinetti
- Copyright (C) 2006, 2007 Mario Pucci
+ Copyright (C) 2024 Sebastian Schlenkrich, Andre Miemiec
 
  This file is part of QuantLib, a free-software/open-source library
  for financial quantitative analysts and developers - http://quantlib.org/
@@ -19,14 +18,14 @@
  FOR A PARTICULAR PURPOSE.  See the license for more details.
 */
 
-/*! \file rangeaccrual.hpp
-    \brief range-accrual coupon
+/*! \file fxrangeaccrualfixed.hpp
+    \brief fx range-accrual coupon
 */
 
 #ifndef quantlib_fx_range_accrual_fixed_h
 #define quantlib_fx_range_accrual_fixed_h
 
-
+#include <ql/time/schedule.hpp>
 #include <ql/cashflows/fixedratecoupon.hpp>
 
 namespace QuantLib {
@@ -132,6 +131,43 @@ namespace QuantLib {
         );
 
     };
+
+        //! helper class building a sequence of range-accrual coupons
+    class FxRangeAccrualLeg {
+      public:
+        FxRangeAccrualLeg(Schedule schedule,
+                           ext::shared_ptr<FxIndex> index,
+                           ext::shared_ptr<FxRangeAccrualFixedCouponPricer> pricer);
+        FxRangeAccrualLeg& withNotionals(Real notional);
+        FxRangeAccrualLeg& withNotionals(const std::vector<Real>& notionals);
+        FxRangeAccrualLeg& withPaymentDayCounter(const DayCounter&);
+        FxRangeAccrualLeg& withPaymentAdjustment(BusinessDayConvention);
+        FxRangeAccrualLeg& withFixingDays(Natural fixingDays);
+        FxRangeAccrualLeg& withFixingDays(const std::vector<Natural>& fixingDays);
+        FxRangeAccrualLeg& withFixedRates(Rate fixedRate);
+        FxRangeAccrualLeg& withFixedRates(const std::vector<Rate>& fixedRates);
+        FxRangeAccrualLeg& withLowerTriggers(Rate trigger);
+        FxRangeAccrualLeg& withLowerTriggers(const std::vector<Rate>& triggers);
+        FxRangeAccrualLeg& withUpperTriggers(Rate trigger);
+        FxRangeAccrualLeg& withUpperTriggers(const std::vector<Rate>& triggers);
+        FxRangeAccrualLeg& withObservationShifters(Natural lookback);
+        FxRangeAccrualLeg& withObservationShifters(const std::vector<Natural>& lookbacks);
+        operator Leg() const;
+
+      private:
+        Schedule schedule_;
+        ext::shared_ptr<FxIndex> index_;
+        std::vector<Real> notionals_;
+        DayCounter paymentDayCounter_;
+        BusinessDayConvention paymentAdjustment_;
+        std::vector<Natural> fixingDays_;
+        std::vector<Rate> fixedRates_;
+        std::vector<Rate> lowerTriggers_, upperTriggers_;
+        std::vector<Natural> lookbacks_;
+        ext::shared_ptr<FxRangeAccrualFixedCouponPricer> pricer_;
+    };
+
+
 
 }
 
