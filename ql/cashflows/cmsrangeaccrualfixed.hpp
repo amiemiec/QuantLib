@@ -18,8 +18,8 @@
  FOR A PARTICULAR PURPOSE.  See the license for more details.
 */
 
-/*! \file rangeaccrual.hpp
-    \brief range-accrual coupon
+/*! \file cmsrangeaccrualfixed.hpp
+    \brief cms range-accrual coupon
 */
 
 #ifndef quantlib_cms_range_accrual_fixed_h
@@ -135,7 +135,7 @@ namespace QuantLib {
 
 
 
-       //! helper class building a sequence of range-accrual floating-rate coupons
+    //! helper class building a sequence of range-accrual coupons
     class CmsRangeAccrualLeg {
       public:
         CmsRangeAccrualLeg(Schedule schedule, ext::shared_ptr<SwapIndex> index,ext::shared_ptr<CmsRangeAccrualFixedCouponPricer> pricer);
