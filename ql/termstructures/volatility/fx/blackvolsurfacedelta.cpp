@@ -241,10 +241,78 @@ Volatility BlackVolatilitySurfaceDelta::blackVolImpl(Time t, Real strike) const 
         }
     }
 
-    //AMI++
-    Real displacement = t <= times_.back() ? 0.0 : forward(t) - forward(tme);
-    //++AMI
-    return blackVolSmile(tme)->volatility(strike - displacement );
+    if (t <= times_.back()) { 
+        //quoted range of volatalities
+        return blackVolSmile(tme)->volatility(strike);
+    } else { 
+        //extrapolation
+        boost::shared_ptr<InterpolatedSmileSection> sml =
+            boost::dynamic_pointer_cast<InterpolatedSmileSection>(blackVolSmile(tme));
+
+        std::vector<Real> i_strikes; i_strikes.empty();
+        std::vector<Real> i_vols; i_vols.empty();
+
+        Size count = 0;
+        for (int i = 0; i < putDeltas_.size(); i++) {
+            Real i_vol = sml->volatilities()[count];
+
+            BlackDeltaCalculator bc(Option::Put, ltdt_, spot_->value(),
+                                    domesticTS_->discount(t), foreignTS_->discount(t),
+                                    i_vol * std::sqrt(t));
+            
+            i_strikes.push_back(bc.strikeFromDelta(putDeltas_[i]));
+            i_vols.push_back(i_vol);
+            count++;
+        }
+        if (hasAtm_) {
+            Real i_vol = sml->volatilities()[count];
+
+            BlackDeltaCalculator bc(Option::Put, ltdt_, spot_->value(), domesticTS_->discount(t),
+                                    foreignTS_->discount(t), i_vol * std::sqrt(t));
+
+            i_strikes.push_back(bc.atmStrike(ltat_));
+            i_vols.push_back(i_vol);
+
+            count++;
+        }
+        for (int i = 0; i < callDeltas_.size(); i++) {
+            Real i_vol = sml->volatilities()[count];
+
+            BlackDeltaCalculator bc(Option::Call, ltdt_, spot_->value(), domesticTS_->discount(t),
+                                    foreignTS_->discount(t), i_vol * std::sqrt(t));
+
+            i_strikes.push_back(bc.strikeFromDelta(callDeltas_[i]));
+            i_vols.push_back(i_vol);
+            count++;
+        }
+
+
+
+        /*
+        std::vector<Real> i_strikes; i_strikes.empty();
+        std::vector<Real> i_vols;
+        i_vols.empty();
+        for (int i = 0; i < putDeltas_.size(); i++) {
+            
+            
+            sml->strikes
+            Real i_vol = 0.0;
+
+            BlackDeltaCalculator bc(Option::Put, ltdt_, spot_->value(), domesticTS_->discount(t),
+                                    foreignTS_->discount(t), i_vol*std::sqrt(t));
+            i_strikes.push_back(bc.strikeFromDelta(putDeltas_[i]));
+            i_vols.push_back(i_vol);
+        }
+        for (int i = 0; i < callDeltas_.size(); i++) {
+            Real i_vol = blackVolSmile(tme)->volatility(strike);
+            BlackDeltaCalculator bc(Option::Call, ltdt_, spot_->value(), domesticTS_->discount(t),
+                                    foreignTS_->discount(t), i_vol * std::sqrt(t));
+            i_strikes.push_back(bc.strikeFromDelta(callDeltas_[i]));
+            i_vols.push_back(i_vol);
+        }*/
+        Interpolation i_inter = Linear().interpolate(i_strikes.begin(), i_strikes.end(), i_vols.begin());
+        return i_inter(strike,true);
+    }
 }
 
 } 
