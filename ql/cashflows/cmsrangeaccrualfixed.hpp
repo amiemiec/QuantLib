@@ -53,7 +53,7 @@ namespace QuantLib {
             ext::shared_ptr<SwapIndex> index,
             Real lowerTrigger,
             Real upperTrigger,
-            Natural lockout,
+            Natural shifter,
             // optional FixedRateCoupon
             const Date& refPeriodStart = Date(),
             const Date& refPeriodEnd = Date(),
@@ -74,7 +74,7 @@ namespace QuantLib {
         ext::shared_ptr<SwapIndex> index() const { return index_; }
         Real lowerTrigger() const { return lowerTrigger_; }
         Real upperTrigger() const { return upperTrigger_; }
-        Natural lockout() const { return lockout_; }
+        Natural lockout() const { return shifter_; }
         Real rangeAccrual() const;
 
         //! \name Visitability
@@ -92,7 +92,7 @@ namespace QuantLib {
         ext::shared_ptr<SwapIndex> index_;
         Real lowerTrigger_;
         Real upperTrigger_;
-        Natural lockout_; 
+        Natural shifter_; 
 
         ext::shared_ptr<CmsRangeAccrualFixedCouponPricer> pricer_;
         mutable Real rangeAccrual_;
@@ -123,11 +123,11 @@ namespace QuantLib {
         mutable std::map<std::string, Real> additionalResults_;
 
       private:
-        Real ProbFromPutSpread(const ext::shared_ptr<SwapIndex>& index,
-                               const Date& exerciseDate,
-                               const Date& paymentDate,
-                               const Real optionStrike,
-                               const Real spreadWidth = 1.0e-4  // 1bp, be carefull with numerical instabilities
+        Real ProbFromDigital(const ext::shared_ptr<SwapIndex>& index,
+                             const Date& exerciseDate,
+                             const Date& paymentDate,
+                             const Real optionStrike,
+                             const Real spreadWidth = 1.0e-4  // 1bp, be carefull with numerical instabilities
         );
 
     };
@@ -151,8 +151,8 @@ namespace QuantLib {
         CmsRangeAccrualLeg& withLowerTriggers(const std::vector<Rate>& triggers);
         CmsRangeAccrualLeg& withUpperTriggers(Rate trigger);
         CmsRangeAccrualLeg& withUpperTriggers(const std::vector<Rate>& triggers);
-        CmsRangeAccrualLeg& withObservationShifters(Natural lookback);
-        CmsRangeAccrualLeg& withObservationShifters(const std::vector<Natural>& lookbacks);
+        CmsRangeAccrualLeg& withObservationShifters(Natural shifter);
+        CmsRangeAccrualLeg& withObservationShifters(const std::vector<Natural>& shifters);
         operator Leg() const;
 
       private:
@@ -164,7 +164,7 @@ namespace QuantLib {
         std::vector<Natural> fixingDays_;
         std::vector<Rate> fixedRates_;
         std::vector<Rate> lowerTriggers_, upperTriggers_;
-        std::vector<Natural> lookbacks_;
+        std::vector<Natural> shifters_;
         ext::shared_ptr<CmsRangeAccrualFixedCouponPricer> pricer_;
     };
 

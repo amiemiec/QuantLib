@@ -1,7 +1,7 @@
 ﻿/* -*- mode: c++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
 
 /*
- Copyright (C) 2024 Sebastian Schlenkrich, Andre Miemiec
+ Copyright (C) 2024 Andre Miemiec, Sebastian Schlenkrich
 
  This file is part of QuantLib, a free-software/open-source library
  for financial quantitative analysts and developers - http://quantlib.org/
@@ -48,7 +48,7 @@ namespace QuantLib {
         ext::shared_ptr<FxIndex> index,
         Real lowerTrigger,
         Real upperTrigger,
-        Natural lockout,
+        Natural shifter,
         // optional FixedRateCoupon
         const Date& refPeriodStart,
         const Date& refPeriodEnd,
@@ -63,7 +63,7 @@ namespace QuantLib {
                       refPeriodEnd,
                       exCouponDate),
       index_(index), lowerTrigger_(lowerTrigger), upperTrigger_(upperTrigger),
-      observationsSchedule_(0), pricer_(0), rangeAccrual_(0.0), lockout_(lockout) 
+      observationsSchedule_(0), pricer_(0), rangeAccrual_(0.0), shifter_(shifter) 
     {
         QL_REQUIRE(index_, "fxIndex_ required.");
         QL_REQUIRE(lowerTrigger_ > 0.0, "lowerTrigger_ > 0.0 required.");
@@ -71,8 +71,8 @@ namespace QuantLib {
 
         Calendar cal = index_->fixingCalendar();
 
-        Date accrualStartDateMod = cal.advance(accrualStartDate,-lockout * Days);
-        Date accrualEndDateMod = cal.advance(accrualEndDate, -lockout_ * Days);
+        Date accrualStartDateMod = cal.advance(accrualStartDate,-(signed)(shifter) * Days);
+        Date accrualEndDateMod = cal.advance(accrualEndDate, - (signed)(shifter_) * Days);
 
         observationsSchedule_ = ext::make_shared<Schedule>(MakeSchedule()
                                                                .from(accrualStartDateMod)
@@ -209,7 +209,8 @@ namespace QuantLib {
     Real FxRangeAccrualFixedCouponPricer::ProbFromDigital(const ext::shared_ptr<FxIndex>& fxIndex,
                                                           const Date& exerciseDate,
                                                           const Date& paymentDate,
-                                                          const Real optionStrike)
+                                                          const Real optionStrike,
+                                                          const Real spreadWidth)
     {
         Date referenceDate = Settings::instance().evaluationDate();
         Date spotDate = fxIndex->fixingCalendar().advance(referenceDate, 2 * Days);
@@ -220,23 +221,22 @@ namespace QuantLib {
 
         //Replication of Murex-Approach
         
-        Real spread   = 0.001;
         Real put_spread = 0.0;
         Real cll_spread = 0.0;
 
-        Real variance   = volatility_->blackVariance(exerciseDate, optionStrike + spread);
-        put_spread += blackFormula(Option::Put,  optionStrike + spread, forward, std::sqrt(variance), 1.0)/(optionStrike + spread);
-        cll_spread -= blackFormula(Option::Call, optionStrike + spread, forward, std::sqrt(variance), 1.0)/(optionStrike + spread);
+        Real variance   = volatility_->blackVariance(exerciseDate, optionStrike + spreadWidth);
+        put_spread += blackFormula(Option::Put,  optionStrike + spreadWidth, forward, std::sqrt(variance), 1.0)/(optionStrike + spreadWidth);
+        cll_spread -= blackFormula(Option::Call, optionStrike + spreadWidth, forward, std::sqrt(variance), 1.0)/(optionStrike + spreadWidth);
         
         variance = volatility_->blackVariance(exerciseDate, optionStrike);
         put_spread -= blackFormula(Option::Put,  optionStrike, forward, std::sqrt(variance), 1.0)/optionStrike;
         cll_spread += blackFormula(Option::Call, optionStrike, forward, std::sqrt(variance), 1.0)/optionStrike;
 
         //++AMI: numerically redundant
-        put_spread /= spread;
+        put_spread /= spreadWidth;
         put_spread /= spot;
 
-        cll_spread /= spread;
+        cll_spread /= spreadWidth;
         cll_spread /= spot;
         //AMI++
 
@@ -313,15 +313,15 @@ namespace QuantLib {
     }
 
 
-    FxRangeAccrualLeg& FxRangeAccrualLeg::withObservationShifters(Natural lookback) {
-        lookbacks_ = std::vector<Natural>(1, lookback);
+    FxRangeAccrualLeg& FxRangeAccrualLeg::withObservationShifters(Natural shifter) {
+        shifters_ = std::vector<Natural>(1, shifter);
         return *this;
     }
 
 
     FxRangeAccrualLeg&
-    FxRangeAccrualLeg::withObservationShifters(const std::vector<Natural>& lookbacks) {
-        lookbacks_ = lookbacks;
+    FxRangeAccrualLeg::withObservationShifters(const std::vector<Natural>& shifters) {
+        shifters_ = shifters;
         return *this;
     }
 
@@ -368,7 +368,7 @@ namespace QuantLib {
                     paymentDate, detail::get(notionals_, i, Null<Real>()),
                     detail::get(fixedRates_, i, 0.0), paymentDayCounter_, start, end, index_,
                     detail::get(lowerTriggers_, i, 0.0), detail::get(upperTriggers_, i, 0.0),
-                    detail::get(lookbacks_, i, 0), refStart, refEnd));
+                    detail::get(shifters_, i, 0), refStart, refEnd));
             cpn->setPricer(pricer_);
             leg.push_back(ext::dynamic_pointer_cast<CashFlow>(cpn));
         }

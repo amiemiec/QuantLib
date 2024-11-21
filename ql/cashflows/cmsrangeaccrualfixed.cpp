@@ -49,7 +49,7 @@ namespace QuantLib {
         ext::shared_ptr<SwapIndex> index,
         Real lowerTrigger,
         Real upperTrigger,
-        Natural lockout,
+        Natural shifter,
         // optional FixedRateCoupon
         const Date& refPeriodStart,
         const Date& refPeriodEnd,
@@ -63,7 +63,7 @@ namespace QuantLib {
                       refPeriodStart,
                       refPeriodEnd,
                       exCouponDate),
-      index_(index), lowerTrigger_(lowerTrigger), upperTrigger_(upperTrigger), lockout_(lockout), 
+      index_(index), lowerTrigger_(lowerTrigger), upperTrigger_(upperTrigger), shifter_(shifter), 
       observationsSchedule_(0), pricer_(0), rangeAccrual_(0.0) 
     {
         QL_REQUIRE(index_, "swapIndex_ required.");
@@ -72,7 +72,7 @@ namespace QuantLib {
         Calendar cal = index->fixingCalendar();
 
         Date accrualStartDateMod = accrualStartDate;
-        Date accrualEndDateMod = cal.advance(accrualEndDate, -lockout_ * Days);
+        Date accrualEndDateMod = cal.advance(accrualEndDate, -(signed)(shifter_) * Days);
 
         observationsSchedule_ = ext::make_shared<Schedule>(MakeSchedule()
                                 .from(accrualStartDateMod)
@@ -184,7 +184,7 @@ namespace QuantLib {
             } else {
                 if (pricer_) { // replication
                     //AMI: coupon.date() ?
-                    probLow = ProbFromPutSpread(index, d, coupon.date(), strikeLow);
+                    probLow = ProbFromDigital(index, d, coupon.date(), strikeLow);
                 } else { // fall-back to Bachelier w/o CMS adjustment
                     probLow = Phi((strikeLow - indexObservation) / standardDevLow);
                 }
@@ -194,7 +194,7 @@ namespace QuantLib {
                 probUpp = (indexObservation < strikeUpp) ? (1.0) : (0.0);
             } else {
                 if (pricer_) { // replication
-                    probUpp = ProbFromPutSpread(index, d, coupon.date(), strikeUpp);
+                    probUpp = ProbFromDigital(index, d, coupon.date(), strikeUpp);
                 } else { // fall-back to Bachelier w/o CMS adjustment
                     probUpp = Phi((strikeUpp - indexObservation) / standardDevUpp);
                 }
@@ -221,7 +221,7 @@ namespace QuantLib {
         return rangeAccrual_;
     }
 
-    Real CmsRangeAccrualFixedCouponPricer::ProbFromPutSpread(const ext::shared_ptr<SwapIndex>& index,
+    Real CmsRangeAccrualFixedCouponPricer::ProbFromDigital(const ext::shared_ptr<SwapIndex>& index,
                                                              const Date& exerciseDate,
                                                              const Date& paymentDate,
                                                              const Real optionStrike,
@@ -324,14 +324,14 @@ namespace QuantLib {
     }
 
 
-    CmsRangeAccrualLeg& CmsRangeAccrualLeg::withObservationShifters(Natural lookback) {
-        lookbacks_ = std::vector<Natural>(1, lookback);
+    CmsRangeAccrualLeg& CmsRangeAccrualLeg::withObservationShifters(Natural shifter) {
+        shifters_ = std::vector<Natural>(1, shifter);
         return *this;
     }
 
 
-    CmsRangeAccrualLeg& CmsRangeAccrualLeg::withObservationShifters(const std::vector<Natural>& lookbacks) {
-        lookbacks_ = lookbacks;
+    CmsRangeAccrualLeg& CmsRangeAccrualLeg::withObservationShifters(const std::vector<Natural>& shifters) {
+        shifters_ = shifters;
         return *this;
     }
 
@@ -380,7 +380,7 @@ namespace QuantLib {
                     paymentDate, detail::get(notionals_, i, Null<Real>()),
                     detail::get(fixedRates_, i, 0.0), paymentDayCounter_, start, end, index_,
                     detail::get(lowerTriggers_, i, 0.0), detail::get(upperTriggers_, i, 0.0),
-                    detail::get(lookbacks_, i, 0), refStart, refEnd));
+                    detail::get(shifters_, i, 0), refStart, refEnd));
             cpn->setPricer(pricer_);
             leg.push_back(ext::dynamic_pointer_cast<CashFlow>(cpn));
         }

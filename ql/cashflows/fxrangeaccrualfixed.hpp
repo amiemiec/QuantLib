@@ -2,7 +2,7 @@
 
 /*
 
- Copyright (C) 2024 Sebastian Schlenkrich, Andre Miemiec
+ Copyright (C) 2024 Andre Miemiec, Sebastian Schlenkrich
 
  This file is part of QuantLib, a free-software/open-source library
  for financial quantitative analysts and developers - http://quantlib.org/
@@ -51,7 +51,7 @@ namespace QuantLib {
             ext::shared_ptr<FxIndex> index,
             Real lowerTrigger,
             Real upperTrigger,
-            Natural lockout,
+            Natural shifter,
             // optional FixedRateCoupon
             const Date& refPeriodStart = Date(),
             const Date& refPeriodEnd = Date(),
@@ -89,7 +89,7 @@ namespace QuantLib {
         ext::shared_ptr<FxIndex> index_;
         Real lowerTrigger_;
         Real upperTrigger_;
-        Natural lockout_;
+        Natural shifter_;
 
         ext::shared_ptr<FxRangeAccrualFixedCouponPricer> pricer_;
         mutable Real rangeAccrual_;
@@ -127,7 +127,8 @@ namespace QuantLib {
             const ext::shared_ptr<FxIndex>& index,
             const Date& exerciseDate,
             const Date& paymentDate,
-            const Real optionStrike
+            const Real optionStrike,
+            const Real spreadWidth = 1.0e-3 
         );
 
     };
@@ -150,8 +151,8 @@ namespace QuantLib {
         FxRangeAccrualLeg& withLowerTriggers(const std::vector<Rate>& triggers);
         FxRangeAccrualLeg& withUpperTriggers(Rate trigger);
         FxRangeAccrualLeg& withUpperTriggers(const std::vector<Rate>& triggers);
-        FxRangeAccrualLeg& withObservationShifters(Natural lookback);
-        FxRangeAccrualLeg& withObservationShifters(const std::vector<Natural>& lookbacks);
+        FxRangeAccrualLeg& withObservationShifters(Natural shifter);
+        FxRangeAccrualLeg& withObservationShifters(const std::vector<Natural>& shifters);
         operator Leg() const;
 
       private:
@@ -163,7 +164,7 @@ namespace QuantLib {
         std::vector<Natural> fixingDays_;
         std::vector<Rate> fixedRates_;
         std::vector<Rate> lowerTriggers_, upperTriggers_;
-        std::vector<Natural> lookbacks_;
+        std::vector<Natural> shifters_;
         ext::shared_ptr<FxRangeAccrualFixedCouponPricer> pricer_;
     };
 
