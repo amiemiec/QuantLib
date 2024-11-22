@@ -343,7 +343,7 @@ namespace QuantLib {
                                                                           << " required");
 
         Leg leg;
-        leg.empty();
+        leg.clear();
 
         // the following is not always correct
         Calendar calendar = schedule_.calendar();
