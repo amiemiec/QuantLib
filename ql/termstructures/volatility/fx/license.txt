@@ -6,6 +6,9 @@ distributed under the Modified BSD License:
 3.) fxvannavolgasmilesection.[hpp/cpp] : vanna volga method 
 4.) fxsmilesection.hpp: helper
 
+The Delta-Quotation of FX-Surface was extended (by André Miemiec (2024))
+to include an time extrapolation consistent with Murex.
+
 ORE is open source software released under the Modified BSD License. 
 The license allows free use of ORE and its source, as well as proprietary 
 extensions to be commercialised.
