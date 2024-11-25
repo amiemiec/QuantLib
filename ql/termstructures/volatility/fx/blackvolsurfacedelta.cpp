@@ -249,8 +249,8 @@ Volatility BlackVolatilitySurfaceDelta::blackVolImpl(Time t, Real strike) const 
         boost::shared_ptr<InterpolatedSmileSection> sml =
             boost::dynamic_pointer_cast<InterpolatedSmileSection>(blackVolSmile(tme));
 
-        std::vector<Real> i_strikes; i_strikes.empty();
-        std::vector<Real> i_vols; i_vols.empty();
+        std::vector<Real> i_strikes; i_strikes.clear();
+        std::vector<Real> i_vols; i_vols.clear();
 
         Size count = 0;
         for (int i = 0; i < putDeltas_.size(); i++) {
