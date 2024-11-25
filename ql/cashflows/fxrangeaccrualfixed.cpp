@@ -63,7 +63,7 @@ namespace QuantLib {
                       refPeriodEnd,
                       exCouponDate),
       index_(index), lowerTrigger_(lowerTrigger), upperTrigger_(upperTrigger),
-      observationsSchedule_(0), pricer_(0), rangeAccrual_(0.0), shifter_(shifter),
+      observationSchedule_(0), observationDates_(0), pricer_(0), rangeAccrual_(0.0), shifter_(shifter),
       accrualStartDateIncl_(true), accrualEndDateExcl_(true) 
     {
         QL_REQUIRE(index_, "fxIndex_ required.");
@@ -75,14 +75,15 @@ namespace QuantLib {
         Date accrualStartDateMod = cal.advance(accrualStartDate,-(signed)(shifter) * Days);
         Date accrualEndDateMod = cal.advance(accrualEndDate, - (signed)(shifter_) * Days);
 
-        observationsSchedule_ = ext::make_shared<Schedule>(MakeSchedule()
+        observationSchedule_ = ext::make_shared<Schedule>(MakeSchedule()
                                                                .from(accrualStartDateMod)
                                                                .to(accrualEndDateMod)
                                                                .withFrequency(Daily)
                                                                .withCalendar(cal)
                                                                .withConvention(Following));
 
-        QL_REQUIRE(observationsSchedule_, "observationsSchedule_ required.");
+        QL_REQUIRE(observationSchedule_, "observationsSchedule_ required.");
+        observationDates_ = observationSchedule_->dates();
     }
 
 
@@ -95,12 +96,12 @@ namespace QuantLib {
         } else {
             // calculate fall-back via intrinsic value
             Real inRange = 0.0;
-            for (auto d : observationsSchedule()->dates()) {
+            for (auto d : observationDates()) {
                 auto indexObservation = index()->fixing(d);
                 if (indexObservation >= lowerTrigger() && indexObservation <= upperTrigger())
                     inRange += 1.0;
             }
-            rangeAccrual_ = inRange / observationsSchedule()->dates().size();
+            rangeAccrual_ = inRange / observationDates().size();
         }
     }
 
@@ -135,7 +136,7 @@ namespace QuantLib {
         
         Natural inRange = 0;
 
-        for each (Date dt in observationsSchedule_->dates()) {
+        for each (Date dt in observationSchedule_->dates()) {
             if (dt < lastRelevantObsDate) {
                 Real observation = index_->fixing(dt);
                 if (!((observation < lowerTrigger_) || (observation > upperTrigger_))) {
@@ -180,9 +181,9 @@ namespace QuantLib {
         CumulativeNormalDistribution Phi;
 
         Real daysInRange = 0.0;
-        Size observationDays = coupon.observationsSchedule()->dates().size();
+        Size observationDays = coupon.observationDates().size();
         
-        for (auto d : coupon.observationsSchedule()->dates()) {
+        for (auto d : coupon.observationDates()) {
             // we declare the valiables here to have them available for additional results later
             Real indexObservation = index->fixing(d);
      

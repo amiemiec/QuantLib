@@ -68,7 +68,7 @@ namespace QuantLib {
         Real accruedAmount(const Date&) const override;
         //@}
 
-        ext::shared_ptr<Schedule> observationsSchedule() const { return observationsSchedule_; }
+        std::vector<Date> observationDates() const { return observationDates_; }
         ext::shared_ptr<FxIndex> index() const { return index_; }
         Real lowerTrigger() const { return lowerTrigger_; }
         Real upperTrigger() const { return upperTrigger_; }
@@ -86,7 +86,8 @@ namespace QuantLib {
 
       private:
 
-        ext::shared_ptr<Schedule> observationsSchedule_;
+        ext::shared_ptr<Schedule> observationSchedule_; //to be removed
+        std::vector<Date> observationDates_;
         ext::shared_ptr<FxIndex> index_;
         Real lowerTrigger_;
         Real upperTrigger_;
