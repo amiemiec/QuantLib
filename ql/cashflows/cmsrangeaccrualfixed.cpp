@@ -49,7 +49,7 @@ namespace QuantLib {
         ext::shared_ptr<SwapIndex> index,
         Real lowerTrigger,
         Real upperTrigger,
-        Natural shifter,
+        Natural lockout,
         // optional FixedRateCoupon
         const Date& refPeriodStart,
         const Date& refPeriodEnd,
@@ -63,8 +63,9 @@ namespace QuantLib {
                       refPeriodStart,
                       refPeriodEnd,
                       exCouponDate),
-      index_(index), lowerTrigger_(lowerTrigger), upperTrigger_(upperTrigger), shifter_(shifter), 
-      observationsSchedule_(0), pricer_(0), rangeAccrual_(0.0), accrualStartDateIncl_(true),
+      index_(index), lowerTrigger_(lowerTrigger), upperTrigger_(upperTrigger), lockout_(lockout),
+      crystallizedAt_(lockout),
+      observationSchedule_(0),observationDates_(0), pricer_(0), rangeAccrual_(0.0), accrualStartDateIncl_(true),
       accrualEndDateExcl_(true) 
     {
         QL_REQUIRE(index_, "swapIndex_ required.");
@@ -73,16 +74,27 @@ namespace QuantLib {
         Calendar cal = index->fixingCalendar();
 
         Date accrualStartDateMod = accrualStartDate;
-        Date accrualEndDateMod = cal.advance(accrualEndDate, -(signed)(shifter_) * Days);
+        Date accrualEndDateMod = cal.advance(accrualEndDate,-(signed)(lockout_)*Days);
 
-        observationsSchedule_ = ext::make_shared<Schedule>(MakeSchedule()
+        observationSchedule_ = ext::make_shared<Schedule>(MakeSchedule()
                                 .from(accrualStartDateMod)
                                 .to(accrualEndDateMod)
                                 .withFrequency(Daily)
                                 .withCalendar(cal)
                                 .withConvention(Following));
 
-        QL_REQUIRE(observationsSchedule_, "observationsSchedule_ required.");
+        observationDates_ = observationSchedule_->dates();
+
+        Date lastNonCrystallizedDate = observationDates_.back();
+  
+        if (crystallizedAt_ > 0) {
+            for (Size i = 0; i < crystallizedAt_; i++) {
+                observationDates_.push_back(lastNonCrystallizedDate);
+            }
+        }
+        
+
+        QL_REQUIRE(observationSchedule_, "observationsSchedule_ required.");
     }
 
 
@@ -95,12 +107,12 @@ namespace QuantLib {
         } else {
             // calculate fall-back via intrinsic value
             Real inRange = 0.0;
-            for (auto d : observationsSchedule()->dates()) {
+            for (auto d : observationDates_) {
                 auto indexObservation = index()->fixing(d);
                 if (indexObservation >= lowerTrigger() && indexObservation <= upperTrigger())
                     inRange += 1.0;
             }
-            rangeAccrual_ = inRange / observationsSchedule()->dates().size();
+            rangeAccrual_ = inRange / observationDates_.size();
         }
     }
 
@@ -133,12 +145,11 @@ namespace QuantLib {
         accrualDays += 1; // refDate included
 
         Date accrualDate = index_->fixingCalendar().advance(refDate, 1 * Days);
-        Date lastRelevantObsDate =
-            index_->fixingCalendar().advance(accrualDate, -(signed)(shifter_)*Days);
+        Date lastRelevantObsDate = accrualDate;
 
         Natural inRange = 0;
 
-        for each (Date dt in observationsSchedule_->dates()) {
+        for each (Date dt in observationDates()) {
             if (dt < lastRelevantObsDate) {
                 Real observation = index_->fixing(dt);
                 if (!((observation < lowerTrigger_) || (observation > upperTrigger_))) {
@@ -196,9 +207,9 @@ namespace QuantLib {
         CumulativeNormalDistribution Phi;
         
         Real daysInRange = 0.0;
-        Size observationDays = coupon.observationsSchedule()->dates().size();
+        Size observationDays = coupon.observationDates().size();
 
-        for (auto d : coupon.observationsSchedule()->dates()) 
+        for (auto d : coupon.observationDates()) 
         {
             Real indexObservation = index->fixing(d);
             Real standardDevLow = 0.0;
@@ -359,14 +370,14 @@ namespace QuantLib {
     }
 
 
-    CmsRangeAccrualLeg& CmsRangeAccrualLeg::withObservationShifters(Natural shifter) {
-        shifters_ = std::vector<Natural>(1, shifter);
+    CmsRangeAccrualLeg& CmsRangeAccrualLeg::withObservationLockouts(Natural lockout) {
+        lockouts_ = std::vector<Natural>(1, lockout);
         return *this;
     }
 
 
-    CmsRangeAccrualLeg& CmsRangeAccrualLeg::withObservationShifters(const std::vector<Natural>& shifters) {
-        shifters_ = shifters;
+    CmsRangeAccrualLeg& CmsRangeAccrualLeg::withObservationLockouts(const std::vector<Natural>& lockouts) {
+        lockouts_ = lockouts;
         return *this;
     }
 
@@ -415,7 +426,7 @@ namespace QuantLib {
                     paymentDate, detail::get(notionals_, i, Null<Real>()),
                     detail::get(fixedRates_, i, 0.0), paymentDayCounter_, start, end, index_,
                     detail::get(lowerTriggers_, i, 0.0), detail::get(upperTriggers_, i, 0.0),
-                    detail::get(shifters_, i, 0), refStart, refEnd));
+                    detail::get(lockouts_, i, 0), refStart, refEnd));
             cpn->setPricer(pricer_);
             leg.push_back(ext::dynamic_pointer_cast<CashFlow>(cpn));
         }

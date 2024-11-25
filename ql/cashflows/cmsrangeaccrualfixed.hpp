@@ -53,7 +53,7 @@ namespace QuantLib {
             ext::shared_ptr<SwapIndex> index,
             Real lowerTrigger,
             Real upperTrigger,
-            Natural shifter,
+            Natural lockout,
             // optional FixedRateCoupon
             const Date& refPeriodStart = Date(),
             const Date& refPeriodEnd = Date(),
@@ -71,11 +71,11 @@ namespace QuantLib {
         //@}
 
 
-        ext::shared_ptr<Schedule> observationsSchedule() const { return observationsSchedule_; }
+        std::vector<Date> observationDates() const { return observationDates_; }
         ext::shared_ptr<SwapIndex> index() const { return index_; }
         Real lowerTrigger() const { return lowerTrigger_; }
         Real upperTrigger() const { return upperTrigger_; }
-        Natural lockout() const { return shifter_; }
+        Natural lockout() const { return lockout_; }
         Real rangeAccrual() const;
         Real deterministicRangeAccrual(const Date& d) const;
 
@@ -91,11 +91,13 @@ namespace QuantLib {
 
       private:
 
-        ext::shared_ptr<Schedule> observationsSchedule_;
+        ext::shared_ptr<Schedule> observationSchedule_;  //to be removed
+        mutable std::vector<Date> observationDates_;
         ext::shared_ptr<SwapIndex> index_;
         Real lowerTrigger_;
         Real upperTrigger_;
-        Natural shifter_; 
+        Natural lockout_;
+        Natural crystallizedAt_;
         bool accrualStartDateIncl_;
         bool accrualEndDateExcl_; 
 
@@ -156,8 +158,8 @@ namespace QuantLib {
         CmsRangeAccrualLeg& withLowerTriggers(const std::vector<Rate>& triggers);
         CmsRangeAccrualLeg& withUpperTriggers(Rate trigger);
         CmsRangeAccrualLeg& withUpperTriggers(const std::vector<Rate>& triggers);
-        CmsRangeAccrualLeg& withObservationShifters(Natural shifter);
-        CmsRangeAccrualLeg& withObservationShifters(const std::vector<Natural>& shifters);
+        CmsRangeAccrualLeg& withObservationLockouts(Natural lockout);
+        CmsRangeAccrualLeg& withObservationLockouts(const std::vector<Natural>& lockouts);
         operator Leg() const;
 
       private:
@@ -169,7 +171,7 @@ namespace QuantLib {
         std::vector<Natural> fixingDays_;
         std::vector<Rate> fixedRates_;
         std::vector<Rate> lowerTriggers_, upperTriggers_;
-        std::vector<Natural> shifters_;
+        std::vector<Natural> lockouts_;
         ext::shared_ptr<CmsRangeAccrualFixedCouponPricer> pricer_;
     };
 
