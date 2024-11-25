@@ -62,17 +62,18 @@ namespace QuantLib {
         //@{
         void performCalculations() const override;
         //@}
-        //! \name CashFlow interface
+        //! \name Coupon interface
         //@{
         Real amount() const override;
+        Real accruedAmount(const Date&) const override;
         //@}
-
 
         ext::shared_ptr<Schedule> observationsSchedule() const { return observationsSchedule_; }
         ext::shared_ptr<FxIndex> index() const { return index_; }
         Real lowerTrigger() const { return lowerTrigger_; }
         Real upperTrigger() const { return upperTrigger_; }
         Real rangeAccrual() const;
+        Real deterministicRangeAccrual(const Date& d) const;
 
         //! \name Visitability
         //@{
@@ -90,6 +91,8 @@ namespace QuantLib {
         Real lowerTrigger_;
         Real upperTrigger_;
         Natural shifter_;
+        bool accrualStartDateIncl_;
+        bool accrualEndDateExcl_;
 
         ext::shared_ptr<FxRangeAccrualFixedCouponPricer> pricer_;
         mutable Real rangeAccrual_;
