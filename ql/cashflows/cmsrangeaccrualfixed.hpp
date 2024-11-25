@@ -64,9 +64,10 @@ namespace QuantLib {
         //@{
         void performCalculations() const override;
         //@}
-        //! \name CashFlow interface
+        //! \name Coupon interface
         //@{
         Real amount() const override;
+        Real accruedAmount(const Date&) const override;
         //@}
 
 
@@ -76,6 +77,8 @@ namespace QuantLib {
         Real upperTrigger() const { return upperTrigger_; }
         Natural lockout() const { return shifter_; }
         Real rangeAccrual() const;
+        Real deterministicRangeAccrual(const Date& d) const;
+
 
         //! \name Visitability
         //@{
@@ -93,6 +96,8 @@ namespace QuantLib {
         Real lowerTrigger_;
         Real upperTrigger_;
         Natural shifter_; 
+        bool accrualStartDateIncl_;
+        bool accrualEndDateExcl_; 
 
         ext::shared_ptr<CmsRangeAccrualFixedCouponPricer> pricer_;
         mutable Real rangeAccrual_;

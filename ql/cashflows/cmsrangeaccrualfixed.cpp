@@ -64,7 +64,8 @@ namespace QuantLib {
                       refPeriodEnd,
                       exCouponDate),
       index_(index), lowerTrigger_(lowerTrigger), upperTrigger_(upperTrigger), shifter_(shifter), 
-      observationsSchedule_(0), pricer_(0), rangeAccrual_(0.0) 
+      observationsSchedule_(0), pricer_(0), rangeAccrual_(0.0), accrualStartDateIncl_(true),
+      accrualEndDateExcl_(true) 
     {
         QL_REQUIRE(index_, "swapIndex_ required.");
         QL_REQUIRE(lowerTrigger_ < upperTrigger_, "lowerTrigger_ < upperTrigger_ required.");
@@ -113,6 +114,40 @@ namespace QuantLib {
     Real CmsRangeAccrualFixedCoupon::amount() const {
         calculate();
         return FixedRateCoupon::amount() * rangeAccrual_;
+    }
+
+
+    Real CmsRangeAccrualFixedCoupon::accruedAmount(const Date& d) const {
+        calculate();
+        Date accruedAmountSettlementDate = index_->fixingCalendar().advance(d, 1 * Days);
+        return FixedRateCoupon::accruedAmount(accruedAmountSettlementDate) *
+               deterministicRangeAccrual(d);
+    }
+
+
+    Real CmsRangeAccrualFixedCoupon::deterministicRangeAccrual(const Date& d) const {
+        Date refDate = Settings::instance().evaluationDate();
+
+        Natural accrualDays =
+            index_->fixingCalendar().businessDaysBetween(accrualStartDate_, refDate);
+        accrualDays += 1; // refDate included
+
+        Date accrualDate = index_->fixingCalendar().advance(refDate, 1 * Days);
+        Date lastRelevantObsDate =
+            index_->fixingCalendar().advance(accrualDate, -(signed)(shifter_)*Days);
+
+        Natural inRange = 0;
+
+        for each (Date dt in observationsSchedule_->dates()) {
+            if (dt < lastRelevantObsDate) {
+                Real observation = index_->fixing(dt);
+                if (!((observation < lowerTrigger_) || (observation > upperTrigger_))) {
+                    inRange += 1;
+                }
+            }
+        }
+        
+        return (Real)(inRange) / (Real)(accrualDays);
     }
 
 
