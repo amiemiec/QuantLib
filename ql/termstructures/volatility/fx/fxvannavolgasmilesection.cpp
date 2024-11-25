@@ -36,8 +36,7 @@ VannaVolgaSmileSection::VannaVolgaSmileSection(Real spot, Real rd, Real rf, Time
 
     // infer strikes from delta and vol quote
     try {
-        BlackDeltaCalculator a(Option::Type::Call, deltaType, spot, domesticDiscount(), foreignDiscount(),
-                               sqrt(t) * atmVol);
+        BlackDeltaCalculator a(Option::Type::Call, deltaType, spot, domesticDiscount(), foreignDiscount(), atmVol * std::sqrt(t));
         k_atm_ = a.atmStrike(atmType);
     } catch (const std::exception& e) {
         QL_FAIL("VannaVolgaSmileSection: Error during calculating atm strike: "
@@ -47,8 +46,7 @@ VannaVolgaSmileSection::VannaVolgaSmileSection(Real spot, Real rd, Real rf, Time
     }
 
     try {
-        BlackDeltaCalculator c(Option::Type::Call, deltaType, spot, domesticDiscount(), foreignDiscount(),
-                               sqrt(t) * vol_c_);
+        BlackDeltaCalculator c(Option::Type::Call, deltaType, spot, domesticDiscount(), foreignDiscount(), vol_c_ * std::sqrt(t));
         k_c_ = c.strikeFromDelta(delta);
     } catch (const std::exception& e) {
         QL_FAIL("VannaVolgaSmileSection: Error during calculating call strike at delta "
@@ -58,8 +56,7 @@ VannaVolgaSmileSection::VannaVolgaSmileSection(Real spot, Real rd, Real rf, Time
     }
 
     try {
-        BlackDeltaCalculator p(Option::Type::Put, deltaType, spot, domesticDiscount(), foreignDiscount(),
-                               sqrt(t) * vol_p_);
+        BlackDeltaCalculator p(Option::Type::Put, deltaType, spot, domesticDiscount(), foreignDiscount(), vol_p_ * std::sqrt(t));
         k_p_ = p.strikeFromDelta(-delta);
     } catch (const std::exception& e) {
         QL_FAIL("VannaVolgaSmileSection: Error during calculating put strike at delta "
@@ -70,11 +67,11 @@ VannaVolgaSmileSection::VannaVolgaSmileSection(Real spot, Real rd, Real rf, Time
 }
 
 Real VannaVolgaSmileSection::d1(Real x) const {
-    return (log(spot_ / x) + (rd_ - rf_ + 0.5 * atmVol_ * atmVol_) * t_) / (atmVol_ * sqrt(t_));
+    return (std::log(spot_ / x) + (rd_ - rf_ + 0.5 * atmVol_ * atmVol_) * t_) / (atmVol_ * std::sqrt(t_));
 }
 
 Real VannaVolgaSmileSection::d2(Real x) const {
-    return (log(spot_ / x) + (rd_ - rf_ - 0.5 * atmVol_ * atmVol_) * t_) / (atmVol_ * sqrt(t_));
+    return (std::log(spot_ / x) + (rd_ - rf_ - 0.5 * atmVol_ * atmVol_) * t_) / (atmVol_ * std::sqrt(t_));
 }
 
 Volatility VannaVolgaSmileSection::volatility(Real k) const {
@@ -86,9 +83,9 @@ Volatility VannaVolgaSmileSection::volatility(Real k) const {
     Real k3 = k_c_;
 
     // TODO: Cache the (constant) denominator
-    Real r1 = log(k2 / k) * log(k3 / k) / (log(k2 / k1) * log(k3 / k1));
-    Real r2 = log(k / k1) * log(k3 / k) / (log(k2 / k1) * log(k3 / k2));
-    Real r3 = log(k / k1) * log(k / k2) / (log(k3 / k1) * log(k3 / k2));
+    Real r1 = std::log(k2 / k) * std::log(k3 / k) / (std::log(k2 / k1) * std::log(k3 / k1));
+    Real r2 = std::log(k / k1) * std::log(k3 / k) / (std::log(k2 / k1) * std::log(k3 / k2));
+    Real r3 = std::log(k / k1) * std::log(k / k2) / (std::log(k3 / k1) * std::log(k3 / k2));
 
     Real sigma1_k = r1 * vol_p_ + r2 * atmVol_ + r3 * vol_c_;
     if (firstApprox_) {
