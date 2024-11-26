@@ -587,45 +587,59 @@ namespace QuantLib {
 
     Real GFunctionFactory::GFunctionStandard::operator()(Real x) {
         Real n = static_cast<Real>(swapLength_) * q_;
-        return x / std::pow((1.0 + x/q_), delta_) * 1.0 /
-            (1.0 - 1.0 / std::pow((1.0 + x/q_), n));
+        if (std::abs(x) < 0.00001) {
+            return q_ / n + (n - 2.0 * delta_ + 1)/2.0/n * x;
+        } else {
+            return x / std::pow((1.0 + x / q_), delta_) * 1.0 /
+                   (1.0 - 1.0 / std::pow((1.0 + x / q_), n));
+        }
     }
 
     Real GFunctionFactory::GFunctionStandard::firstDerivative(Real x) {
         Real n = static_cast<Real>(swapLength_) * q_;
-        Real a = 1.0 + x / q_;
-        Real AA = a - delta_/q_ * x;
-        Real B = std::pow(a,(n - delta_ - 1.0))/(std::pow(a,n) - 1.0);
+        if (std::abs(x) < 0.00001) {
+            return (n - 2.0 * delta_ + 1) / 2.0 / n +
+                   (n * n - 6 * delta_ * n + 6 * delta_ * delta_ - 1)/6.0/q_/n * x;
+        } else {
 
-        Real secNum = n * x * std::pow(a,(n-1.0));
-        Real secDen = q_ * std::pow(a, delta_) * (std::pow(a, n) - 1.0) *
-            (std::pow(a, n) - 1.0);
-        Real sec = secNum / secDen;
+            Real a = 1.0 + x / q_;
+            Real AA = a - delta_ / q_ * x;
+            Real B = std::pow(a, (n - delta_ - 1.0)) / (std::pow(a, n) - 1.0);
 
-        return AA * B - sec;
+            Real secNum = n * x * std::pow(a, (n - 1.0));
+            Real secDen =
+                q_ * std::pow(a, delta_) * (std::pow(a, n) - 1.0) * (std::pow(a, n) - 1.0);
+            Real sec = secNum / secDen;
+
+            return AA * B - sec;
+        }
     }
 
     Real GFunctionFactory::GFunctionStandard::secondDerivative(Real x) {
         Real n = static_cast<Real>(swapLength_) * q_;
-        Real a = 1.0 + x/q_;
-        Real AA = a - delta_/q_ * x;
-        Real A1 = (1.0 - delta_)/q_;
-        Real B = std::pow(a,(n - delta_ - 1.0))/(std::pow(a,n) - 1.0);
-        Real Num = (1.0 + delta_ - n) * std::pow(a, (n-delta_-2.0)) -
-            (1.0 + delta_) * std::pow(a, (2.0*n-delta_-2.0));
-        Real Den = (std::pow(a, n) - 1.0) * (std::pow(a, n) - 1.0);
-        Real B1 = 1.0 / q_ * Num / Den;
+        if (std::abs(x) < 0.00001) {
+            return (n * n - 6 * delta_ * n + 6 * delta_ * delta_ - 1) / 6.0 / q_ / n;
+        } else {        
+            Real a = 1.0 + x / q_;
+            Real AA = a - delta_ / q_ * x;
+            Real A1 = (1.0 - delta_) / q_;
+            Real B = std::pow(a, (n - delta_ - 1.0)) / (std::pow(a, n) - 1.0);
+            Real Num = (1.0 + delta_ - n) * std::pow(a, (n - delta_ - 2.0)) -
+                       (1.0 + delta_) * std::pow(a, (2.0 * n - delta_ - 2.0));
+            Real Den = (std::pow(a, n) - 1.0) * (std::pow(a, n) - 1.0);
+            Real B1 = 1.0 / q_ * Num / Den;
 
-        Real C =  x / std::pow(a, delta_);
-        Real C1 = (std::pow(a, delta_)
-            - delta_ /q_ * x * std::pow(a, (delta_ - 1.0))) / std::pow(a, 2 * delta_);
+            Real C = x / std::pow(a, delta_);
+            Real C1 = (std::pow(a, delta_) - delta_ / q_ * x * std::pow(a, (delta_ - 1.0))) /
+                      std::pow(a, 2 * delta_);
 
-        Real D =  std::pow(a, (n-1.0))/ ((std::pow(a, n) - 1.0) * (std::pow(a, n) - 1.0));
-        Real D1 = ((n - 1.0) * std::pow(a, (n-2.0)) * (std::pow(a, n) - 1.0)
-            - 2 * n * std::pow(a, (2 * (n-1.0))))
-            / (q_ * (std::pow(a, n) - 1.0)*(std::pow(a, n) - 1.0)*(std::pow(a, n) - 1.0));
+            Real D = std::pow(a, (n - 1.0)) / ((std::pow(a, n) - 1.0) * (std::pow(a, n) - 1.0));
+            Real D1 = ((n - 1.0) * std::pow(a, (n - 2.0)) * (std::pow(a, n) - 1.0) -
+                       2 * n * std::pow(a, (2 * (n - 1.0)))) /
+                      (q_ * (std::pow(a, n) - 1.0) * (std::pow(a, n) - 1.0) * (std::pow(a, n) - 1.0));
 
-        return A1 * B + AA * B1 - n/q_ * (C1 * D + C * D1);
+            return A1 * B + AA * B1 - n / q_ * (C1 * D + C * D1);
+        }
     }
 
     ext::shared_ptr<GFunction> GFunctionFactory::newGFunctionStandard(Size q,
