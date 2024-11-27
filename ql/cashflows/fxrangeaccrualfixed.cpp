@@ -256,11 +256,11 @@ namespace QuantLib {
         Real put_spread = 0.0;
         Real cll_spread = 0.0;
 
-        Real variance   = volatility_->blackVariance(exerciseDate, optionStrike + spreadWidth);
+        Real variance   = volatility_->blackVariance(exerciseDate, optionStrike + spreadWidth,true);
         put_spread += blackFormula(Option::Put,  optionStrike + spreadWidth, forward, std::sqrt(variance), 1.0)/(optionStrike + spreadWidth);
         cll_spread -= blackFormula(Option::Call, optionStrike + spreadWidth, forward, std::sqrt(variance), 1.0)/(optionStrike + spreadWidth);
         
-        variance = volatility_->blackVariance(exerciseDate, optionStrike);
+        variance = volatility_->blackVariance(exerciseDate, optionStrike,true);
         put_spread -= blackFormula(Option::Put,  optionStrike, forward, std::sqrt(variance), 1.0)/optionStrike;
         cll_spread += blackFormula(Option::Call, optionStrike, forward, std::sqrt(variance), 1.0)/optionStrike;
 
