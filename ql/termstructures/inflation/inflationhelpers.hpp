@@ -49,6 +49,10 @@ namespace QuantLib {
         void setTermStructure(ZeroInflationTermStructure*) override;
         Real impliedQuote() const override;
 
+        //AMI++
+        ext::shared_ptr<ZeroCouponInflationSwap> swap() { return zciis_; };
+        //++AMI
+
       protected:
         Period swapObsLag_;
         Date maturity_;
