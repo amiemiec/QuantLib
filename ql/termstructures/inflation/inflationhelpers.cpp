@@ -3,6 +3,8 @@
 /*
  Copyright (C) 2007, 2009 Chris Kenyon
  Copyright (C) 2007 StatPro Italia srl
+ Copyright (C) 2024 André Miemiec
+
 
  This file is part of QuantLib, a free-software/open-source library
  for financial quantitative analysts and developers - http://quantlib.org/
@@ -29,25 +31,31 @@ namespace QuantLib {
 
     ZeroCouponInflationSwapHelper::ZeroCouponInflationSwapHelper(
         const Handle<Quote>& quote,
+        const Natural spot,
         const Period& swapObsLag,
-        const Date& maturity,
+        const Period& swapTerm,
         Calendar calendar,
         BusinessDayConvention paymentConvention,
         DayCounter dayCounter,
         ext::shared_ptr<ZeroInflationIndex> zii,
         CPI::InterpolationType observationInterpolation,
         Handle<YieldTermStructure> nominalTermStructure)
-    : BootstrapHelper<ZeroInflationTermStructure>(quote), swapObsLag_(swapObsLag),
-      maturity_(maturity), calendar_(std::move(calendar)), paymentConvention_(paymentConvention),
+    : BootstrapHelper<ZeroInflationTermStructure>(quote), spot_(spot), swapObsLag_(swapObsLag),
+      /* maturity_(maturity),*/ calendar_(std::move(calendar)),
+      paymentConvention_(paymentConvention),
       dayCounter_(std::move(dayCounter)), zii_(std::move(zii)),
       observationInterpolation_(observationInterpolation),
       nominalTermStructure_(std::move(nominalTermStructure)) {
 
-        std::pair<Date, Date> limStart = inflationPeriod(maturity_ - swapObsLag_, zii_->frequency());
-        std::pair<Date, Date> interpolationPeriod = inflationPeriod(maturity, zii_->frequency());
+        Date today = Settings::instance().evaluationDate();
+        startDate_ = calendar_.advance(today, spot_ * Days);
+        maturityDate_ = calendar_.advance(startDate_, swapTerm, Unadjusted);
+
+        std::pair<Date, Date> limStart = inflationPeriod(maturityDate_ - swapObsLag_, zii_->frequency());
+        std::pair<Date, Date> interpolationPeriod = inflationPeriod(maturityDate_, zii_->frequency());
 
         if ((detail::CPI::effectiveInterpolationType(observationInterpolation_) == CPI::Linear) &&
-            (maturity > interpolationPeriod.first)) {
+            (maturityDate_ > interpolationPeriod.first)) {
             // if interpolated, we need to cover the end of the interpolation period
             earliestDate_ = limStart.first;
             latestDate_ = limStart.second + 1;
@@ -96,9 +104,8 @@ namespace QuantLib {
         ext::shared_ptr<ZeroInflationIndex> new_zii = zii_->clone(zits);
 
         Real nominal = 1000000.0; // has to be something but doesn't matter what
-        Date start = nominalTermStructure_->referenceDate();
-        zciis_.reset(new ZeroCouponInflationSwap(Swap::Payer, nominal, start,
-                                                 maturity_, calendar_, paymentConvention_,
+        zciis_.reset(new ZeroCouponInflationSwap(Swap::Payer, nominal, startDate_,
+                                                 maturityDate_, calendar_, paymentConvention_,
                                                  dayCounter_, K, // fixed side & fixed rate
                                                  new_zii, swapObsLag_, observationInterpolation_));
         // Because very simple instrument only takes
@@ -124,8 +131,8 @@ namespace QuantLib {
 
         if (yii_->interpolated()) {
             // if interpolated then simple
-            earliestDate_ = maturity_ - swapObsLag_;
-            latestDate_ = maturity_ - swapObsLag_;
+            earliestDate_ = maturityDate_ - swapObsLag_;
+            latestDate_ = maturityDate_ - swapObsLag_;
         } else {
             // but if NOT interpolated then the value is valid
             // for every day in an inflation period so you actually
@@ -133,7 +140,7 @@ namespace QuantLib {
             // just put the first date because using that convention
             // for the base date throughout
             std::pair<Date, Date> limStart =
-                inflationPeriod(maturity_ - swapObsLag_, yii_->frequency());
+                inflationPeriod(maturityDate_ - swapObsLag_, yii_->frequency());
             earliestDate_ = limStart.first;
             latestDate_ = limStart.first;
         }
@@ -178,7 +185,7 @@ namespace QuantLib {
         // always works because tenor is always 1 year so
         // no problem with different days-in-month
         Date from = Settings::instance().evaluationDate();
-        Date to = maturity_;
+        Date to = maturityDate_;
         Schedule fixedSchedule = MakeSchedule()
                                      .from(from)
                                      .to(to)

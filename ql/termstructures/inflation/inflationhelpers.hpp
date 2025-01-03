@@ -3,6 +3,8 @@
 /*
  Copyright (C) 2007, 2009 Chris Kenyon
  Copyright (C) 2007 StatPro Italia srl
+ Copyright (C) 2024 André Miemiec
+
 
  This file is part of QuantLib, a free-software/open-source library
  for financial quantitative analysts and developers - http://quantlib.org/
@@ -37,8 +39,10 @@ namespace QuantLib {
       public:
         ZeroCouponInflationSwapHelper(
             const Handle<Quote>& quote,
+            const Natural spot,
             const Period& swapObsLag, // lag on swap observation of index
-            const Date& maturity,
+            /* const Date& maturity,*/
+            const Period& swapTerm,
             Calendar calendar, // index may have null calendar as valid on every day
             BusinessDayConvention paymentConvention,
             DayCounter dayCounter,
@@ -54,8 +58,10 @@ namespace QuantLib {
         //++AMI
 
       protected:
+        Natural spot_;
         Period swapObsLag_;
-        Date maturity_;
+        Date startDate_;
+        Date maturityDate_;
         Calendar calendar_;
         BusinessDayConvention paymentConvention_;
         DayCounter dayCounter_;
@@ -84,6 +90,7 @@ namespace QuantLib {
       protected:
         Period swapObsLag_;
         Date maturity_;
+        Date paymentDate_;
         Calendar calendar_;
         BusinessDayConvention paymentConvention_;
         DayCounter dayCounter_;

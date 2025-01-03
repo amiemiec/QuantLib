@@ -4,6 +4,7 @@
  Copyright (C) 2007 Chris Kenyon
  Copyright (C) 2007, 2008 StatPro Italia srl
  Copyright (C) 2011 Ferdinando Ametrano
+ Copyright (C) 2024 André Miemiec
 
  This file is part of QuantLib, a free-software/open-source library
  for financial quantitative analysts and developers - http://quantlib.org/
@@ -79,7 +80,7 @@ namespace QuantLib {
                 Rate r = *(std::min_element(c->data().begin(), c->data().end()));
                 return r<0.0 ? Real(r*2.0) : r/2.0;
             }
-            return -detail::maxInflation;
+            return /*--AMI - detail::maxInflation AMI--*/ /*AMI++*/ 1.0e-12; /*++AMI*/
         }
         template <class C>
         static Rate maxValueAfter(Size,
