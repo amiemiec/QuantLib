@@ -4,6 +4,7 @@
  Copyright (C) 2008 Piero Del Boca
  Copyright (C) 2009 Chris Kenyon
  Copyright (C) 2015 Bernd Lewerenz
+ Copyright (C) 2024 André Miemiec
 
 This file is part of QuantLib, a free-software/open-source library
 for financial quantitative analysts and developers - http://quantlib.org/
@@ -23,257 +24,218 @@ FOR A PARTICULAR PURPOSE.  See the license for more details.
 #include <ql/termstructures/inflation/seasonality.hpp>
 #include <ql/termstructures/inflationtermstructure.hpp>
 #include <ql/errors.hpp>
+#include <ql/time/daycounters/one.hpp>
 
 namespace QuantLib {
 
-    bool Seasonality::isConsistent(const InflationTermStructure&) const {
-        return true;
-    }
-
-
-    //Multiplicative Seasonality on price = on CPI/RPI/HICP/etc
-
-    void MultiplicativePriceSeasonality::validate() const
+    MultiplicativePriceSeasonality::MultiplicativePriceSeasonality(
+        //const Date& baseDate,
+        const Frequency frequency,
+        const std::vector<Real>& seasonalityData)
+    : frequency_(frequency), /* baseDate_(baseDate),*/ seasonalityData_(seasonalityData) 
     {
-        // NOLINTBEGIN(clang-analyzer-optin.cplusplus.VirtualCall)
-        switch (this->frequency()) {
-            case Semiannual:        //2
-            case EveryFourthMonth:  //3
-            case Quarterly:         //4
-            case Bimonthly:         //6
-            case Monthly:           //12
-            case Biweekly:          // etc.
-            case Weekly:
-            case Daily:
-                QL_REQUIRE(!this->seasonalityFactors().empty(), "no seasonality factors given");
-                QL_REQUIRE( (this->seasonalityFactors().size() %
-                             this->frequency()) == 0,
-                           "For frequency " << this->frequency()
-                           << " require multiple of " << ((int)this->frequency()) << " factors "
-                           << this->seasonalityFactors().size() << " were given.");
-            break;
-            default:
-                QL_FAIL("bad frequency specified: " << this->frequency()
-                        << ", only semi-annual through daily permitted.");
-            break;
-        }
-        // NOLINTEND(clang-analyzer-optin.cplusplus.VirtualCall)
+        QL_REQUIRE(seasonalityData.size() == frequency, "Size of seasonality vector does not match");
     }
 
 
-    bool MultiplicativePriceSeasonality::isConsistent(const InflationTermStructure& iTS) const
+    Rate MultiplicativePriceSeasonality::correctZeroRate(const Date &date,
+                                                         const Rate rate,
+                                                         const InflationTermStructure& iTS) const 
     {
-        // If multi-year is the specification consistent with the term structure start date?
-        // We do NOT test daily seasonality because this will, in general, never be consistent
-        // given weekends, holidays, leap years, etc.
-        if(this->frequency() == Daily) return true;
-        if(Size(this->frequency()) == seasonalityFactors().size()) return true;
+        //QL_REQUIRE(baseDate() == iTS.baseDate(), "base dates of inflation term structure and seasonality should be alligned");
 
-        // how many years do you need to test?
-        Size nTest = seasonalityFactors().size() / this->frequency();
-        // ... relative to the start of the inflation curve
-        std::pair<Date,Date> lim = inflationPeriod(iTS.baseDate(), iTS.frequency());
-        Date curveBaseDate = lim.second;
-        Real factorBase = this->seasonalityFactor(curveBaseDate);
+        std::pair<Date, Date> lim = inflationPeriod(date, iTS.frequency());
 
-        Real eps = 0.00001;
-        for (Size i = 1; i < nTest; i++) {
-            Real factorAt = this->seasonalityFactor(curveBaseDate+Period(i,Years));
-            QL_REQUIRE(std::fabs(factorAt-factorBase)<eps,"seasonality is inconsistent with inflation term structure, factors "
-                       << factorBase << " and later factor " << factorAt << ", " << i << " years later from inflation curve "
-                       <<" with base date at " << curveBaseDate);
-        }
-
-        return true;
+        return MultiplicativePriceSeasonality::seasonalityCorrectionImpl(
+            rate, lim.first, iTS.dayCounter(), iTS.baseDate(), RateType::Zero);
     }
 
 
-    MultiplicativePriceSeasonality::MultiplicativePriceSeasonality(const Date& seasonalityBaseDate, const Frequency frequency,
-                                                                   const std::vector<Rate>& seasonalityFactors)
+    Rate MultiplicativePriceSeasonality::correctYoYRate(const Date& date,
+                                                        const Rate rate,
+                                                        const InflationTermStructure& iTS) const 
     {
-        MultiplicativePriceSeasonality::set(seasonalityBaseDate, frequency, seasonalityFactors);
-    }
+        //QL_REQUIRE(baseDate() == iTS.baseDate(),
+        //           "base dates of inflation term structure and seasonality should be alligned");
 
-    void MultiplicativePriceSeasonality::set(const Date& seasonalityBaseDate, const Frequency frequency,
-                                             const std::vector<Rate>& seasonalityFactors)
-    {
-        frequency_ = frequency;
-        seasonalityFactors_ = std::vector<Rate>(seasonalityFactors.size());
-        for(Size i=0; i<seasonalityFactors.size(); i++) {
-            seasonalityFactors_[i] = seasonalityFactors[i];
-        }
-        seasonalityBaseDate_ = seasonalityBaseDate;
-        // NOLINTNEXTLINE(clang-analyzer-optin.cplusplus.VirtualCall)
-        validate();
-    }
+        std::pair<Date, Date> lim = inflationPeriod(iTS.baseDate(), iTS.frequency());
 
-    Date MultiplicativePriceSeasonality::seasonalityBaseDate() const {
-        return seasonalityBaseDate_;
-    }
+        return seasonalityCorrectionImpl(rate, date, iTS.dayCounter(),lim.second, RateType::YoY);
 
-    Frequency MultiplicativePriceSeasonality::frequency() const {
-        return frequency_;
-    }
-
-    std::vector<Rate> MultiplicativePriceSeasonality::seasonalityFactors() const {
-        return seasonalityFactors_;
     }
 
 
-    Rate MultiplicativePriceSeasonality::correctZeroRate(const Date &d,
-                                                         const Rate r,
-                                                         const InflationTermStructure& iTS) const {
-        // Mimic the logic in ZeroInflationIndex::forecastFixing for choosing the
-        // curveBaseDate and effective fixing date. This means that we should retrieve
-        // the input seasonality adjustments when we look at I_{SA}(t) / I_{NSA}(t).
-        Date curveBaseDate = iTS.baseDate();
-        Date effectiveFixingDate = inflationPeriod(d, iTS.frequency()).first;
-        
-        return seasonalityCorrection(r, effectiveFixingDate, iTS.dayCounter(), curveBaseDate, true);
-    }
+    Real MultiplicativePriceSeasonality::seasonalityFactor(const Date& to) const {
 
+        /* simplified old code:
+        Date from = baseDate();
+        Size N = seasonalityFactors().size();
+        //OneDayCounter dcc;
 
-    Rate MultiplicativePriceSeasonality::correctYoYRate(const Date &d,
-                                                        const Rate r,
-                                                        const InflationTermStructure& iTS) const {
-        std::pair<Date,Date> lim = inflationPeriod(iTS.baseDate(), iTS.frequency());
-        Date curveBaseDate = lim.second;
-        return seasonalityCorrection(r, d, iTS.dayCounter(), curveBaseDate, false);
-    }
+        signed sign; sign = (to > from) ? 1 : -1;
 
+        Size periodsInFromTo;
 
-    Real MultiplicativePriceSeasonality::seasonalityFactor(const Date &to) const {
+        if (to != from) {
+             
+            if (frequency() == Daily) {
+                QL_FAIL("a seasonality specification on a daily basis is not allowed");
+                //periodsInFromTo = sign * dcc.dayCount(from,to); // approx  only 
+            } else if (frequency() == Weekly) {
+                QL_FAIL("a seasonality specification on a weekly basis is not allowed");
+                //periodsInFromTo = sign * (int)(dcc.dayCount(from, to) / 7); // approx only 
+            } else if (frequency() == Monthly) {
+                std::pair<Date, Date> fmlim = inflationPeriod(from, frequency());
+                std::pair<Date, Date> tolim = inflationPeriod(to, frequency());
 
-        Date from = seasonalityBaseDate();
-        Frequency factorFrequency = frequency();
-        Size nFactors = seasonalityFactors().size();
-        Period factorPeriod(factorFrequency);
-        Size which = 0;
-        if (from==to) {
-            which = 0;
+                periodsInFromTo = 12 * (tolim.first.year() - fmlim.first.year()) +
+                                  (tolim.first.month() - fmlim.first.month());               
+                periodsInFromTo *= sign;
+            } else if (frequency() == Annual) {
+                QL_FAIL("a seasonality specification on a yearly basis is not allowed");
+            } else {
+                QL_FAIL("Unknown frequency provided: " << frequency());
+            }
         } else {
-            // days, weeks, months, years are the only time unit possibilities
-            Integer diffDays = std::abs(to - from);  // in days
-            Integer dir = 1;
-            if(from > to)dir = -1;
-            Integer diff;
-            if (factorPeriod.units() == Days) {
-                diff = dir*diffDays;
-            } else if (factorPeriod.units() == Weeks) {
-                diff = dir * (diffDays / 7);
-            } else if (factorPeriod.units() == Months) {
-                std::pair<Date,Date> lim = inflationPeriod(to, factorFrequency);
-                diff = diffDays / (31*factorPeriod.length());
-                Date go = from + dir*diff*factorPeriod;
-                while ( !(lim.first <= go && go <= lim.second) ) {
-                    go += dir*factorPeriod;
-                    diff++;
-                }
-                diff=dir*diff;
-            } else if (factorPeriod.units() == Years) {
-                QL_FAIL("seasonality period time unit is not allowed to be : " << factorPeriod.units());
-            } else {
-                QL_FAIL("Unknown time unit: " << factorPeriod.units());
-            }
-            // now adjust to the available number of factors, direction dependent
-
-            if (dir==1) {
-                which = diff % nFactors;
-            } else {
-                which = (nFactors - (-diff % nFactors)) % nFactors;
-            }
+            return seasonalityFactors()[0];
         }
+
+        Size which = sign * (periodsInFromTo % N);
+             which += (sign == -1) ? N : 0;
 
         return seasonalityFactors()[which];
+        */
+
+        if (frequency() == Daily) {
+            QL_FAIL("a seasonality specification on a daily basis is not allowed");
+            // periodsInFromTo = sign * dcc.dayCount(from,to); // approx  only
+        } else if (frequency() == Weekly) {
+            QL_FAIL("a seasonality specification on a weekly basis is not allowed");
+            // periodsInFromTo = sign * (int)(dcc.dayCount(from, to) / 7); // approx only
+        } else if (frequency() == Monthly) {
+
+            std::pair<Date, Date> tolim = inflationPeriod(to, frequency());
+            Real aux = 1.0;
+            for (int i = 0; i < tolim.first.month(); i++)
+                aux *= seasonalityFactors()[i];
+            return aux;
+
+        } else if (frequency() == Annual) {
+            QL_FAIL("a seasonality specification on a yearly basis is not allowed");
+        } else {
+            QL_FAIL("Unknown frequency provided: " << frequency());
+        }
+
     }
 
 
-    Rate MultiplicativePriceSeasonality::seasonalityCorrection(Rate rate,
-                                                               const Date& atDate,
-                                                               const DayCounter& dc,
-                                                               const Date& curveBaseDate,
-                                                               const bool isZeroRate) const {
+    Rate MultiplicativePriceSeasonality::seasonalityCorrectionImpl( Rate rate,
+                                                                    const Date& date,
+                                                                    const DayCounter& dc,
+                                                                    const Date& baseDate,
+                                                                    const RateType type) const {
         // need _two_ corrections in order to get: seasonality = factor[atDate-seasonalityBase] / factor[reference-seasonalityBase]
         // i.e. for ZERO inflation rates you have the true fixing at the curve base so this factor must be normalized to one
         //      for YoY inflation rates your reference point is the year before
 
-        Real factorAt = this->seasonalityFactor(atDate);
+        Real dueDateFactor = seasonalityFactor(date);
 
         //Getting seasonality correction for either ZC or YoY
-        Rate f;
-        if (isZeroRate) {
-            Rate factorBase = this->seasonalityFactor(curveBaseDate);
-            Real seasonalityAt = factorAt / factorBase;
-            std::pair<Date,Date> p = inflationPeriod(atDate,frequency());
-            Time timeFromCurveBase = dc.yearFraction(curveBaseDate, p.first);
-            f = std::pow(seasonalityAt, 1/timeFromCurveBase);
+        Rate f = 0.0;
+        if (type == Zero) {
+            //ZC
+            Rate refDateFactor = seasonalityFactor(baseDate);    
+            std::pair<Date,Date> lim = inflationPeriod(date,frequency());
+            Time timeFromBase = dc.yearFraction(baseDate, lim.first);
+ 
+            Real seasonalityAt = dueDateFactor / refDateFactor;
+ 
+            f = std::pow(seasonalityAt, 1/timeFromBase);
         }
-        else {
-            Rate factor1Ybefore = this->seasonalityFactor(atDate - Period(1,Years));
-            f = factorAt / factor1Ybefore;
+        else { 
+            //YoY
+            Rate refDateFactor = seasonalityFactor(date - Period(1,Years));
+            f = dueDateFactor / refDateFactor;
         }
 
-        return (rate + 1)*f - 1;
+        return (1+rate)*f - 1;    // at time T (timeFromBase) this corresponds to (1+r)^T*S(T)/S(B)
     }
 
 
-    Real KerkhofSeasonality::seasonalityFactor(const Date &to) const {
 
-        Integer dir = 1;
-        Date from = seasonalityBaseDate();
-        Size fromMonth = from.month();
-        Size toMonth = to.month();
-
-        Period factorPeriod(frequency());
-
-        if (toMonth < fromMonth)
-        {
-            Size dummy = fromMonth;
-            fromMonth = toMonth;
-            toMonth = dummy;
-            dir = 0; // We calculate invers Factor in loop
-        }
-
-        QL_REQUIRE(seasonalityFactors().size() == 12 &&
-                   factorPeriod.units() == Months,
-                   "12 monthly seasonal factors needed for Kerkhof Seasonality:"
-                   << " got " << seasonalityFactors().size());
-
-        Real seasonalCorrection = 1.0;
-        for (Size i = fromMonth ; i<toMonth; i++)
-        {
-            seasonalCorrection *= seasonalityFactors()[i];
-
-        }
-
-        if (dir == 0) // invers Factor required
-        {
-            seasonalCorrection = 1/seasonalCorrection;
-        }
-
-        return seasonalCorrection;
+    KerkhofSeasonality::KerkhofSeasonality(const Date& baseDate,
+                                           const std::vector<Real>& seasonalityData)
+    : MultiplicativePriceSeasonality(/*seasonalityBaseDate,*/ Monthly, seasonalityData), baseDate_(baseDate) {
+        QL_REQUIRE(seasonalityData.size() == 12, "12 monthly seasonal factors needed for Kerkhof seasonality.");
     }
 
-    Rate KerkhofSeasonality::seasonalityCorrection(Rate rate,
-                                                   const Date& atDate,
-                                                   const DayCounter& dc,
-                                                   const Date& curveBaseDate,
-                                                   const bool isZeroRate) const {
 
-        Real indexFactor = this->seasonalityFactor(atDate);
+    Rate KerkhofSeasonality::correctZeroRate(const Date& date,
+                                              const Rate rate,
+                                              const InflationTermStructure& iTS) const {
+        QL_REQUIRE(baseDate() == iTS.baseDate(),
+                   "base dates of inflation term structure and seasonality should be alligned");
+        std::pair<Date, Date> lim = inflationPeriod(date, iTS.frequency());
+
+        return KerkhofSeasonality::seasonalityCorrectionImpl(rate, lim.first,
+                                                              iTS.dayCounter(), iTS.baseDate(), RateType::Zero);
+    }
+
+
+    Rate KerkhofSeasonality::correctYoYRate(const Date& date,
+                                            Rate rate,
+                                            const InflationTermStructure& iTS) const {
+        QL_FAIL("Kerkhof does not implement seasonality correction for YoY rates");
+    }
+
+    Real KerkhofSeasonality::seasonalityFactor(const Date& to) const {
+
+        //AMI: tbd
+
+        Date from = baseDate();
+
+        if (from.month() == to.month())
+            return seasonalityFactors()[0];
+
+        Real factor = 1.0;
+
+        if (from.month() > to.month()) {
+            for (Size i = from.month(); i < to.month(); i++) {
+                factor *= seasonalityFactors()[i-1];
+            }        
+        } else {
+            for (Size i = to.month(); i < from.month(); i++) {
+                factor /= seasonalityFactors()[i-1];
+            }        
+        }
+
+        return factor;
+    }
+
+
+    
+    Rate KerkhofSeasonality::seasonalityCorrectionImpl( Rate rate,
+                                                        const Date& date,
+                                                        const DayCounter& dc,
+                                                        const Date& baseDate,
+                                                        const RateType type) const 
+    {
+        //AMI: tbd
+        Real dueDateFactor = seasonalityFactor(date);
 
         // Getting seasonality correction
-        Rate f;
-        if (isZeroRate) {
-            std::pair<Date,Date> lim = inflationPeriod(curveBaseDate, Monthly);
-            Time timeFromCurveBase = dc.yearFraction(lim.first, atDate);
-            f = std::pow(indexFactor, 1/timeFromCurveBase);
+        Rate f = 0.0;
+        if (type == Zero) {
+            //ZC
+            std::pair<Date,Date> lim = inflationPeriod(baseDate, Monthly);
+            Time timeFromBase = dc.yearFraction(lim.first, date);
+            f = std::pow(dueDateFactor, 1/timeFromBase);                  //AMI: ??
         }
         else {
+            //YoY
             QL_FAIL("Seasonal Kerkhof model is not defined on YoY rates");
         }
-
-        return (rate + 1)*f - 1;
+        return (rate + 1) * f - 1;                                    //AMI: ??
     }
-
+    
 }
